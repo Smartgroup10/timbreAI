@@ -43,6 +43,19 @@ func (s *Store) ListTenants(ctx context.Context) ([]Tenant, error) {
 	return out, rows.Err()
 }
 
+// EnsureTenant es un upsert idempotente del tenant principal. Usado por el
+// bootstrap en main.go: si BOOTSTRAP_TENANT_ID/NAME cambian en el .env tras
+// el primer arranque, el nombre se sincroniza pero el resto de columnas se
+// dejan intactas (por si el operador las editó desde la UI admin).
+func (s *Store) EnsureTenant(ctx context.Context, id, name string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO tenants (id, name, status, plan)
+		VALUES ($1, $2, 'active', 'platform')
+		ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+		id, name)
+	return err
+}
+
 func (s *Store) CreateTenant(ctx context.Context, id, name, plan, status string) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO tenants (id, name, plan, status) VALUES ($1, $2, $3, $4)`,

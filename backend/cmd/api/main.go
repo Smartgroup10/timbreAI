@@ -153,6 +153,16 @@ func bootstrapUsers(ctx context.Context, st *store.Store, cfg config.Config, log
 		return err
 	}
 	tenantID := cfg.BootstrapTenant.TenantID
+	// Upsert del tenant para que la FK del usuario owner no falle en fresh installs
+	// (antes esto se hacía en 002_seed.sql con un INSERT estático). Ahora el nombre
+	// sale de BOOTSTRAP_TENANT_NAME, configurable por el operador.
+	tenantName := cfg.BootstrapTenant.Name
+	if tenantName == "" || tenantName == "Tenant Owner" {
+		tenantName = tenantID
+	}
+	if err := st.EnsureTenant(ctx, tenantID, tenantName); err != nil {
+		return err
+	}
 	if err := st.CreateUser(ctx, store.User{
 		ID: "usr_owner", TenantID: &tenantID, Email: cfg.BootstrapTenant.Email, Name: cfg.BootstrapTenant.Name,
 		Role: cfg.BootstrapTenant.Role, PasswordHash: tenantHash,

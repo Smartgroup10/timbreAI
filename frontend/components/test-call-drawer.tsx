@@ -103,7 +103,7 @@ export function TestCallDrawer({
               type="text"
               value={leadName}
               onChange={(e) => setLeadName(e.target.value)}
-              placeholder="Maria Lopez"
+              placeholder="Nombre del contacto"
             />
           </div>
           <div className="field">
