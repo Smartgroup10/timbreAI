@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, DID, SIPTrunk, Tenant, statusClass } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
 type Tab = "trunks" | "dids";
+
+type EndpointState = { state: string; channels: number };
 
 export default function TrunksPage() {
   const { user } = useAuth();
@@ -16,7 +18,36 @@ export default function TrunksPage() {
   const [tab, setTab] = useState<Tab>("trunks");
   const [trunkFormOpen, setTrunkFormOpen] = useState(false);
   const [didFormOpen, setDidFormOpen] = useState(false);
+  const [sipState, setSipState] = useState<Record<string, EndpointState>>({});
+  const [ariEnabled, setAriEnabled] = useState<boolean | null>(null);
   const toast = useToast();
+
+  // Poll real-time SIP registration state from Asterisk every 10s while the
+  // trunks tab is visible. Cheap call (HTTP to ARI on the docker network).
+  useEffect(() => {
+    if (tab !== "trunks") return;
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const data = await api.adminTrunkStatus();
+        if (cancelled) return;
+        setAriEnabled(data.ariEnabled);
+        const map: Record<string, EndpointState> = {};
+        for (const ep of data.endpoints) {
+          map[ep.resource] = { state: ep.state, channels: ep.channel_ids?.length ?? 0 };
+        }
+        setSipState(map);
+      } catch {
+        if (!cancelled) setAriEnabled(false);
+      }
+    }
+    refresh();
+    const id = setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [tab]);
 
   if (user && user.role !== "platform_admin") {
     return <div className="empty-state danger">Acceso restringido al rol platform_admin.</div>;
@@ -141,38 +172,50 @@ export default function TrunksPage() {
                   <tr>
                     <th>Nombre</th>
                     <th>Proveedor</th>
-                    <th>Endpoint Asterisk</th>
+                    <th>Endpoint</th>
                     <th>Host</th>
-                    <th>Estado</th>
+                    <th>Estado app</th>
+                    <th>Estado SIP {ariEnabled === false ? <span className="subtle">(ARI off)</span> : null}</th>
                     <th>DIDs</th>
                     <th>Accion</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {trunksData.map((trunk) => (
-                    <tr key={trunk.id}>
-                      <td className="primary-cell">{trunk.name}</td>
-                      <td>
-                        <span className="chip">{trunk.provider || "—"}</span>
-                      </td>
-                      <td>
-                        <code className="mono">{trunk.asteriskEndpoint}</code>
-                      </td>
-                      <td>
-                        {trunk.host || "—"}
-                        {trunk.port ? `:${trunk.port}` : ""}
-                      </td>
-                      <td>
-                        <span className={statusClass(trunk.status)}>{trunk.status}</span>
-                      </td>
-                      <td>{trunk.didCount}</td>
-                      <td>
-                        <button className="button ghost compact" onClick={() => handleDeleteTrunk(trunk.id)}>
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {trunksData.map((trunk) => {
+                    const sip = sipState[trunk.asteriskEndpoint];
+                    return (
+                      <tr key={trunk.id}>
+                        <td className="primary-cell">{trunk.name}</td>
+                        <td>
+                          <span className="chip">{trunk.provider || "—"}</span>
+                        </td>
+                        <td>
+                          <code className="mono">{trunk.asteriskEndpoint}</code>
+                        </td>
+                        <td>
+                          {trunk.host || "—"}
+                          {trunk.port ? `:${trunk.port}` : ""}
+                        </td>
+                        <td>
+                          <span className={statusClass(trunk.status)}>{trunk.status}</span>
+                        </td>
+                        <td>
+                          <SipStateBadge state={sip?.state} ariEnabled={ariEnabled} />
+                          {sip && sip.channels > 0 ? (
+                            <span className="subtle" style={{ marginLeft: 8 }}>
+                              {sip.channels} llamada{sip.channels === 1 ? "" : "s"}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>{trunk.didCount}</td>
+                        <td>
+                          <button className="button ghost compact" onClick={() => handleDeleteTrunk(trunk.id)}>
+                            Eliminar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -414,6 +457,19 @@ function DIDForm({
       </div>
     </form>
   );
+}
+
+function SipStateBadge({ state, ariEnabled }: { state?: string; ariEnabled: boolean | null }) {
+  if (ariEnabled === false) {
+    return <span className="status">—</span>;
+  }
+  if (!state) {
+    // ARI activo pero Asterisk no lo ve aún (caché, o trunk recién creado).
+    return <span className="status warn">desconocido</span>;
+  }
+  if (state === "online") return <span className="status good">registrado</span>;
+  if (state === "offline") return <span className="status danger">caído</span>;
+  return <span className="status">{state}</span>;
 }
 
 function DIDRow({

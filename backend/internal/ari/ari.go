@@ -202,6 +202,46 @@ func (c *Client) AnswerChannel(ctx context.Context, channelID string) error {
 	return nil
 }
 
+// Endpoint represents a PJSIP endpoint as Asterisk sees it. State is "online",
+// "offline" o "unknown" — para un trunk con REGISTER, "online" implica registro
+// activo; para un trunk con Identify-by-IP, "online" requiere qualify_frequency
+// configurado y respuesta a OPTIONS.
+type Endpoint struct {
+	Technology string   `json:"technology"`
+	Resource   string   `json:"resource"`
+	State      string   `json:"state"`
+	ChannelIDs []string `json:"channel_ids"`
+}
+
+// ListEndpoints devuelve los endpoints registrados en Asterisk para una tecnología
+// (típicamente "PJSIP"). Usado por la UI admin para mostrar el estado real del
+// registro contra el proveedor SIP.
+func (c *Client) ListEndpoints(ctx context.Context, tech string) ([]Endpoint, error) {
+	u := c.baseURL + "/endpoints"
+	if tech != "" {
+		u = u + "/" + url.PathEscape(tech)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", c.auth())
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("ari list endpoints: %s: %s", resp.Status, string(body))
+	}
+	var out []Endpoint
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *Client) HangupChannel(ctx context.Context, channelID string) error {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/channels/"+url.PathEscape(channelID), nil)
 	if err != nil {

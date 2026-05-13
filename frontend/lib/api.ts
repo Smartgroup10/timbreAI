@@ -413,6 +413,11 @@ export const api = {
   adminUpdateTenant: (id: string, input: { name?: string; plan?: string; status?: string }) =>
     request<void>("PATCH", `/api/admin/tenants/${encodeURIComponent(id)}`, input),
   adminTrunks: () => request<SIPTrunk[]>("GET", "/api/admin/trunks"),
+  adminTrunkStatus: () =>
+    request<{ ariEnabled: boolean; endpoints: { technology: string; resource: string; state: string; channel_ids: string[] }[] }>(
+      "GET",
+      "/api/admin/trunks/status",
+    ),
   adminCreateTrunk: (input: Partial<SIPTrunk>) => request<SIPTrunk>("POST", "/api/admin/trunks", input),
   adminUpdateTrunk: (id: string, input: Partial<SIPTrunk>) =>
     request<void>("PATCH", `/api/admin/trunks/${encodeURIComponent(id)}`, input),

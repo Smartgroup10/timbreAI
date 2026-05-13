@@ -80,6 +80,24 @@ func (s *Server) handleAdminDeleteTrunk(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleAdminTrunkStatus consulta Asterisk vía ARI por el estado real de cada
+// endpoint PJSIP. Devuelve un mapa endpoint -> {state, channels} que el portal
+// admin pinta junto a los trunks en BD.
+func (s *Server) handleAdminTrunkStatus(w http.ResponseWriter, r *http.Request) {
+	if s.ari == nil {
+		// ARI desactivado: devolvemos vacío en vez de error para que la UI siga renderizando.
+		writeJSON(w, http.StatusOK, map[string]any{"endpoints": []any{}, "ariEnabled": false})
+		return
+	}
+	eps, err := s.ari.ListEndpoints(r.Context(), "PJSIP")
+	if err != nil {
+		s.logger.Warn("ari list endpoints", "error", err)
+		writeError(w, http.StatusBadGateway, "ari_unreachable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"endpoints": eps, "ariEnabled": true})
+}
+
 // --- Admin: DIDs ---
 
 func (s *Server) handleAdminListDIDs(w http.ResponseWriter, r *http.Request) {
