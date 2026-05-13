@@ -126,7 +126,7 @@ type DispatchableCampaignLead struct {
 
 // NextDispatchableForCampaign devuelve hasta `limit` campaign_leads listos para
 // ser marcados como llamada. Filtros:
-//   - campaign status = 'active'
+//   - campaign.status = 'active' (los campaigns 'draft'/'paused'/'completed' se ignoran)
 //   - start_at NULL o ya pasado
 //   - end_at NULL o aún no llegado
 //   - cl.status pending o failed (no calling/done/blocked)

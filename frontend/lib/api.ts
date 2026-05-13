@@ -320,7 +320,8 @@ export const api = {
     request<Call[]>("GET", withTenant(`/api/leads/${encodeURIComponent(id)}/calls`, tenantOverride)),
   analytics: (tenantOverride?: string) =>
     request<Analytics>("GET", withTenant("/api/analytics", tenantOverride)),
-  createLead: (input: Partial<Lead>) => request<Lead>("POST", "/api/leads", input),
+  createLead: (input: Partial<Lead>, tenantOverride?: string) =>
+    request<Lead>("POST", withTenant("/api/leads", tenantOverride), input),
   importLeads: (csv: string, tenantOverride?: string) =>
     request<ImportResult>("POST", withTenant("/api/leads/import", tenantOverride), undefined, {
       body: csv,
@@ -457,7 +458,7 @@ function withTenant(path: string, tenant?: string): string {
 }
 
 export function statusClass(status: string) {
-  if (["active", "completed", "qualified", "scheduled", "answered"].includes(status)) {
+  if (["active", "completed", "qualified", "answered", "registrado"].includes(status)) {
     return "status good";
   }
   if (["paused", "callback", "queued", "draft", "dialing"].includes(status)) {

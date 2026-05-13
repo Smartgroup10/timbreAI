@@ -572,7 +572,7 @@ func (s *Store) Overview(ctx context.Context, tenantID string) (Overview, error)
 		  (SELECT count(*) FROM calls WHERE tenant_id = $1 AND COALESCE(started_at, created_at) >= date_trunc('day', now())),
 		  (SELECT count(*) FROM calls WHERE tenant_id = $1 AND outcome = 'qualified'),
 		  (SELECT count(*) FROM calls WHERE tenant_id = $1 AND outcome = 'callback'),
-		  (SELECT count(*) FROM campaigns WHERE tenant_id = $1 AND status = 'scheduled'),
+		  (SELECT count(*) FROM campaigns WHERE tenant_id = $1 AND status = 'active'),
 		  (SELECT count(*) FROM calls WHERE tenant_id = $1 AND status = 'queued')`, tenantID).
 		Scan(&o.CallsToday, &o.QualifiedLeads, &o.Callbacks, &o.ActiveCampaigns, &o.QueuedCalls)
 	if err != nil {
