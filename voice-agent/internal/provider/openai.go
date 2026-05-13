@@ -10,8 +10,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"callhub/voice-agent/internal/config"
-	"callhub/voice-agent/internal/session"
+	"timbre/voice-agent/internal/config"
+	"timbre/voice-agent/internal/session"
 )
 
 // OpenAIRealtime wraps the OpenAI Realtime WebSocket API: a single connection that does

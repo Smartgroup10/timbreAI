@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-atrium_calls}
-      POSTGRES_USER: ${POSTGRES_USER:-atrium}
+      POSTGRES_DB: ${POSTGRES_DB:-timbre}
+      POSTGRES_USER: ${POSTGRES_USER:-timbre}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atrium} -d ${POSTGRES_DB:-atrium_calls}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timbre} -d ${POSTGRES_DB:-timbre}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,8 +31,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-callhub}
-      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-callhub-secret-change-me}
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-timbre}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-timbre-secret-change-me}
     volumes:
       - minio_data:/data
     expose:
@@ -61,19 +61,19 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
-      DATABASE_URL: ${DATABASE_URL:-postgres://atrium:change-me@postgres:5432/atrium_calls?sslmode=disable}
+      DATABASE_URL: ${DATABASE_URL:-postgres://timbre:change-me@postgres:5432/timbre?sslmode=disable}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       ASTERISK_ARI_ENABLED: ${ASTERISK_ARI_ENABLED:-false}
       ASTERISK_ARI_URL: ${ASTERISK_ARI_URL:-http://asterisk:8088/ari}
-      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-callhub}
+      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-timbre}
       ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
-      ASTERISK_ARI_APP: ${ASTERISK_ARI_APP:-callhub-bot}
+      ASTERISK_ARI_APP: ${ASTERISK_ARI_APP:-timbre-bot}
       SIP_TEST_EXTENSION: ${SIP_TEST_EXTENSION:-PJSIP/6001}
-      SIP_CALLER_ID: ${SIP_CALLER_ID:-CallHub <1000>}
+      SIP_CALLER_ID: ${SIP_CALLER_ID:-timbre.ai <1000>}
       JWT_SECRET: ${JWT_SECRET:-change-me}
       JWT_TTL: ${JWT_TTL:-12h}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
-      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@callhub.local}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@timbre.ai}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-atrium123}
       BOOTSTRAP_TENANT_EMAIL: ${BOOTSTRAP_TENANT_EMAIL:-owner@atrium.local}
       BOOTSTRAP_TENANT_PASSWORD: ${BOOTSTRAP_TENANT_PASSWORD:-atrium123}
@@ -81,9 +81,9 @@ services:
       VOICE_AGENT_URL: ${VOICE_AGENT_URL:-http://voice-agent:8090}
       VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET:-}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-callhub}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-callhub-secret-change-me}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:-callhub-recordings}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-timbre}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-timbre-secret-change-me}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-timbre-recordings}
       STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL:-http://localhost:9000}
     depends_on:
       postgres:
@@ -185,7 +185,7 @@ services:
       context: ./asterisk
     restart: unless-stopped
     environment:
-      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-callhub}
+      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-timbre}
       ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
     volumes:
       - ./asterisk/etc/asterisk:/etc/asterisk:ro

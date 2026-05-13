@@ -15,8 +15,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"callhub/voice-agent/internal/config"
-	"callhub/voice-agent/internal/session"
+	"timbre/voice-agent/internal/config"
+	"timbre/voice-agent/internal/session"
 )
 
 // AssemblyAI uses AssemblyAI Universal Streaming for ASR, OpenAI Chat Completions for LLM

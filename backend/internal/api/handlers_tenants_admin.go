@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/store"
 )
 
 type createTenantInput struct {

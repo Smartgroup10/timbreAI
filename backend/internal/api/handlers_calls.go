@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/store"
 )
 
 func (s *Server) handleGetLead(w http.ResponseWriter, r *http.Request) {

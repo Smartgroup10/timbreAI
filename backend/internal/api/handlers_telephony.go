@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"atrium-calls/backend/internal/auth"
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/auth"
+	"timbre/backend/internal/store"
 )
 
 // --- Admin: trunks ---

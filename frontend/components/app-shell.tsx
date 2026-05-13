@@ -22,6 +22,7 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, Tenant } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { BrandMark } from "./logo";
 
 type NavItem = { icon: LucideIcon; label: string; href: string };
 
@@ -70,10 +71,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">CH</div>
-          <div>
-            <strong>CallHub</strong>
-            <span>Voice AI operations</span>
+          <BrandMark size={36} className="brand-mark" />
+          <div className="brand-text">
+            <strong>
+              timbre<span className="brand-ai">.ai</span>
+            </strong>
+            <span>Voice AI · agentes con tono propio</span>
           </div>
         </div>
 

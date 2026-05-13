@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"atrium-calls/backend/internal/ari"
-	"atrium-calls/backend/internal/auth"
-	"atrium-calls/backend/internal/store"
-	"atrium-calls/backend/internal/voiceagent"
+	"timbre/backend/internal/ari"
+	"timbre/backend/internal/auth"
+	"timbre/backend/internal/store"
+	"timbre/backend/internal/voiceagent"
 )
 
 // --- Auth ---
@@ -294,7 +294,7 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 		endpoint = "PJSIP/" + req.Phone + "@" + did.AsteriskEndpoint
 		callerID = did.Label
 		if callerID == "" {
-			callerID = "CallHub <" + did.E164 + ">"
+			callerID = "timbre.ai <" + did.E164 + ">"
 		}
 		didID = did.ID
 		trunkEndpoint = did.AsteriskEndpoint
@@ -370,10 +370,10 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 		CallerID: callerID,
 		Timeout:  int(s.cfg.SIP.OriginateTimeout.Seconds()),
 		Variables: map[string]string{
-			"CALLHUB_CALL_ID": created.ID,
-			"CALLHUB_TENANT":  tenantID,
-			"CALLHUB_BOT":     req.BotID,
-			"CALLHUB_DID":     didID,
+			"TIMBRE_CALL_ID": created.ID,
+			"TIMBRE_TENANT":  tenantID,
+			"TIMBRE_BOT":     req.BotID,
+			"TIMBRE_DID":     didID,
 		},
 	})
 	if err != nil {

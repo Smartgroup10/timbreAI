@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"callhub/voice-agent/internal/session"
+	"timbre/voice-agent/internal/session"
 )
 
 // Echo is a no-API provider that just echoes incoming audio back and emits a fake transcript.

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/store"
 )
 
 func (s *Server) handleTenantSettings(w http.ResponseWriter, r *http.Request) {

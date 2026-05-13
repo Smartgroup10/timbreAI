@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Construir un sistema de llamadas con IA multi-tenant (CallHub), soportando:
+Construir un sistema de llamadas con IA multi-tenant (timbre.ai), soportando:
 
 - Llamadas a personas interesadas en rentar una propiedad.
 - Llamadas comerciales a propietarios/leads para explicar el servicio.

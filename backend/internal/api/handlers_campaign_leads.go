@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/store"
 )
 
 func (s *Server) handleListCampaignLeads(w http.ResponseWriter, r *http.Request) {

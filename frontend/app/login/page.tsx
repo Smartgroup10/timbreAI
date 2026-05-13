@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
+import { BrandMark } from "../../components/logo";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -34,22 +35,23 @@ export default function LoginPage() {
   return (
     <div className="login-shell">
       <div className="login-art">
-        <div className="login-brand">
-          <div className="brand-mark">CH</div>
-          <div>
-            <strong>CallHub</strong>
-            <span>Voice AI operations</span>
+        <div className="login-brand-row">
+          <BrandMark size={44} />
+          <div className="login-brand-name">
+            timbre<span>.ai</span>
           </div>
         </div>
-        <h1>El centro de mando de tus llamadas IA.</h1>
+        <h1>
+          Cada negocio merece <span className="accent">su propio timbre.</span>
+        </h1>
         <p className="subtle">
-          Configura bots, ejecuta campanas, supervisa transferencias y compliance desde un solo panel.
-          Multi-tenant, multi-canal, multi-bot.
+          Agentes de voz IA que llaman, agendan y responden con el tono de cada marca.
+          Configúralos, mide cada llamada, transfiere a humano cuando toque.
         </p>
         <ul className="login-feature-list">
-          <li>Postgres + multi-tenant aislado por JWT.</li>
-          <li>ARI de Asterisk para origen de llamadas reales.</li>
-          <li>Trunk SIP configurable (Twilio, Vonage, Telnyx).</li>
+          <li>Multi-tenant aislado, audit log y DNC desde el día uno.</li>
+          <li>Voz en tiempo real: OpenAI Realtime, Deepgram, AssemblyAI.</li>
+          <li>Asterisk + cualquier trunk SIP (Twilio, Vonage, Telnyx).</li>
         </ul>
       </div>
       <div className="login-form-wrap">
@@ -88,9 +90,9 @@ export default function LoginPage() {
           </button>
 
           <p className="login-hint subtle">
-            Credenciales de demo: <code>owner@atrium.local</code> / <code>atrium123</code>
+            Demo cliente: <code>owner@atrium.local</code> / <code>atrium123</code>
             <br />
-            Admin de plataforma: <code>admin@callhub.local</code> / <code>atrium123</code>
+            Admin de plataforma: <code>admin@timbre.ai</code> / <code>atrium123</code>
           </p>
         </form>
       </div>

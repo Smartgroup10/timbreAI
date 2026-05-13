@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/store"
 )
 
 // Worker scans queued calls and decides whether each one is eligible to dispatch right now.

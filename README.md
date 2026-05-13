@@ -1,6 +1,6 @@
-# CallHub
+# timbre.ai
 
-Plataforma SaaS multi-tenant para que clientes inmobiliarios configuren bots que llaman a leads. CallHub es el nombre interno de trabajo; cada cliente final (p.ej. Atrium) vive como un tenant aislado en la misma instancia.
+Plataforma SaaS multi-tenant para que clientes inmobiliarios configuren bots que llaman a leads. timbre.ai es el nombre interno de trabajo; cada cliente final (p.ej. Atrium) vive como un tenant aislado en la misma instancia.
 
 El producto tiene dos flujos principales:
 
@@ -165,7 +165,7 @@ Servicios:
 
 Credenciales de bootstrap (creadas la primera vez que el backend arranca contra una DB vacia):
 
-- `admin@callhub.local` / `atrium123` (rol `platform_admin`, ve `/admin`)
+- `admin@timbre.ai` / `atrium123` (rol `platform_admin`, ve `/admin`)
 - `owner@atrium.local` / `atrium123` (rol `tenant_admin`, scopeado al tenant `atrium`)
 
 Cambialos via `BOOTSTRAP_*_PASSWORD` en `.env` antes del primer arranque o creando otros usuarios manualmente.
@@ -292,7 +292,7 @@ BOOTSTRAP_TENANT_PASSWORD=$(openssl rand -base64 24)
 5. **Domains**: añade los 4 hostnames a sus servicios respectivos
 6. **Deploy**
 
-El primer arranque corre las migraciones (007 archivos `.sql`) y crea los usuarios bootstrap. Login con `admin@callhub.local` y la password que pusiste.
+El primer arranque corre las migraciones (007 archivos `.sql`) y crea los usuarios bootstrap. Login con `admin@timbre.ai` y la password que pusiste.
 
 ### Healthchecks
 

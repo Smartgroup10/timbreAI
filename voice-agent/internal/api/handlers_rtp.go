@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"callhub/voice-agent/internal/rtp"
+	"timbre/voice-agent/internal/rtp"
 )
 
 // handleAllocateRTP reserves a UDP port for the session and starts the listener. The backend

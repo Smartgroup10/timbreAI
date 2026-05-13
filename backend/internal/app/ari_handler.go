@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"atrium-calls/backend/internal/ari"
-	"atrium-calls/backend/internal/store"
-	"atrium-calls/backend/internal/voiceagent"
+	"timbre/backend/internal/ari"
+	"timbre/backend/internal/store"
+	"timbre/backend/internal/voiceagent"
 )
 
 // MakeARIHandler wires Asterisk Stasis events to the voice-agent. On StasisStart we:

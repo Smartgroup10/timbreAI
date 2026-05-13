@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/store"
 )
 
 type importResult struct {

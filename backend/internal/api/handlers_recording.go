@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/store"
 )
 
 // handleInternalRecording is called by the voice-agent at session close. The body is the raw WAV

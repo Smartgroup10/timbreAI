@@ -14,8 +14,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"callhub/voice-agent/internal/config"
-	"callhub/voice-agent/internal/session"
+	"timbre/voice-agent/internal/config"
+	"timbre/voice-agent/internal/session"
 )
 
 // Deepgram composes three services to form a full voice agent:

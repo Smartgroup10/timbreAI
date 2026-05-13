@@ -68,7 +68,7 @@ func Load() (Config, error) {
 		MigrationsDir: env("MIGRATIONS_DIR", "./migrations"),
 		AllowedOrigins: splitCSV(env("ALLOWED_ORIGINS", "http://localhost:3000")),
 		BootstrapAdmin: Credentials{
-			Email:    env("BOOTSTRAP_ADMIN_EMAIL", "admin@callhub.local"),
+			Email:    env("BOOTSTRAP_ADMIN_EMAIL", "admin@timbre.ai"),
 			Name:     env("BOOTSTRAP_ADMIN_NAME", "Platform Admin"),
 			Password: env("BOOTSTRAP_ADMIN_PASSWORD", "atrium123"),
 			Role:     "platform_admin",
@@ -83,13 +83,13 @@ func Load() (Config, error) {
 		ARI: ARIConfig{
 			Enabled:  envBool("ASTERISK_ARI_ENABLED", false),
 			URL:      env("ASTERISK_ARI_URL", "http://asterisk:8088/ari"),
-			User:     env("ASTERISK_ARI_USER", "callhub"),
+			User:     env("ASTERISK_ARI_USER", "timbre"),
 			Password: env("ASTERISK_ARI_PASSWORD", ""),
-			App:      env("ASTERISK_ARI_APP", "callhub-bot"),
+			App:      env("ASTERISK_ARI_APP", "timbre-bot"),
 		},
 		SIP: SIPConfig{
 			TestExtension:    env("SIP_TEST_EXTENSION", "PJSIP/6001"),
-			CallerID:         env("SIP_CALLER_ID", "CallHub <1000>"),
+			CallerID:         env("SIP_CALLER_ID", "timbre.ai <1000>"),
 			OriginateTimeout: envDuration("SIP_ORIGINATE_TIMEOUT", 30*time.Second),
 		},
 		VoiceAgent: VoiceAgentConfig{
@@ -100,7 +100,7 @@ func Load() (Config, error) {
 			Endpoint:  env("STORAGE_ENDPOINT", ""),
 			AccessKey: env("STORAGE_ACCESS_KEY", ""),
 			SecretKey: env("STORAGE_SECRET_KEY", ""),
-			Bucket:    env("STORAGE_BUCKET", "callhub-recordings"),
+			Bucket:    env("STORAGE_BUCKET", "timbre-recordings"),
 			Region:    env("STORAGE_REGION", "us-east-1"),
 			PublicURL: env("STORAGE_PUBLIC_URL", ""),
 		},

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"atrium-calls/backend/internal/auth"
-	"atrium-calls/backend/internal/store"
+	"timbre/backend/internal/auth"
+	"timbre/backend/internal/store"
 )
 
 // Only tenant_admin and platform_admin can manage team members.

@@ -1,4 +1,4 @@
-module callhub/voice-agent
+module timbre/voice-agent
 
 go 1.23
 

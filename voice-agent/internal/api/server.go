@@ -14,12 +14,12 @@ import (
 
 	"github.com/coder/websocket"
 
-	"callhub/voice-agent/internal/config"
-	"callhub/voice-agent/internal/provider"
-	"callhub/voice-agent/internal/recording"
-	"callhub/voice-agent/internal/rtp"
-	"callhub/voice-agent/internal/session"
-	"callhub/voice-agent/internal/webhook"
+	"timbre/voice-agent/internal/config"
+	"timbre/voice-agent/internal/provider"
+	"timbre/voice-agent/internal/recording"
+	"timbre/voice-agent/internal/rtp"
+	"timbre/voice-agent/internal/session"
+	"timbre/voice-agent/internal/webhook"
 )
 
 type Server struct {

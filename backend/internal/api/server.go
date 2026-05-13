@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"atrium-calls/backend/internal/ari"
-	"atrium-calls/backend/internal/config"
-	"atrium-calls/backend/internal/storage"
-	"atrium-calls/backend/internal/store"
-	"atrium-calls/backend/internal/voiceagent"
+	"timbre/backend/internal/ari"
+	"timbre/backend/internal/config"
+	"timbre/backend/internal/storage"
+	"timbre/backend/internal/store"
+	"timbre/backend/internal/voiceagent"
 )
 
 type Server struct {

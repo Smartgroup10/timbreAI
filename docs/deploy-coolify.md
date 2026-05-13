@@ -1,6 +1,6 @@
 # Despliegue en Coolify
 
-CallHub se despliega como una sola aplicación Docker Compose con 7 servicios. Coolify se encarga
+timbre.ai se despliega como una sola aplicación Docker Compose con 7 servicios. Coolify se encarga
 de Traefik (TLS + routing por hostname) para los servicios HTTP; los puertos SIP/RTP (UDP) se
 exponen directamente al host.
 
@@ -132,5 +132,5 @@ curl https://api.tudominio.com/healthz
 # Login
 curl -X POST https://api.tudominio.com/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@callhub.local","password":"<el que pusiste>"}'
+  -d '{"email":"admin@timbre.ai","password":"<el que pusiste>"}'
 ```

@@ -1,4 +1,4 @@
-module atrium-calls/backend
+module timbre/backend
 
 go 1.23.0
 

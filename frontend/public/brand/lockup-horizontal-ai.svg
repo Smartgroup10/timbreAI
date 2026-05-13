@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 530 120" width="530" height="120" role="img" aria-label="timbre.ai logo">
+  <title>timbre.ai — horizontal lockup</title>
+  <g>
+    <rect width="120" height="120" rx="26.4" fill="#15171a"></rect>
+    <rect x="16.5" y="49.7" width="9" height="20.6" rx="4.5" fill="#f5f3ee"></rect>
+    <rect x="32.1" y="40.4" width="9" height="39.3" rx="4.5" fill="#f5f3ee"></rect>
+    <rect x="47.7" y="26.3" width="9" height="67.4" rx="4.5" fill="#e85d3c"></rect>
+    <rect x="63.3" y="21.6" width="9" height="76.8" rx="4.5" fill="#e85d3c"></rect>
+    <rect x="78.9" y="34.3" width="9" height="51.5" rx="4.5" fill="#f5f3ee"></rect>
+    <rect x="94.5" y="45.0" width="9" height="30.0" rx="4.5" fill="#f5f3ee"></rect>
+  </g>
+  <text x="146" y="86" font-family="&#39;Inter Tight&#39;, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-size="92" font-weight="600" letter-spacing="-4.1" fill="#15171a">timbre</text>
+  <text x="436" y="86" font-family="&#39;Inter Tight&#39;, &#39;Helvetica Neue&#39;, Helvetica, Arial, sans-serif" font-size="42" font-weight="400" letter-spacing="-0.8" fill="#8a8780">.ai</text>
+</svg>

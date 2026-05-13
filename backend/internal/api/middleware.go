@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"atrium-calls/backend/internal/auth"
+	"timbre/backend/internal/auth"
 )
 
 func (s *Server) cors(next http.Handler) http.Handler {
