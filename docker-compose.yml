@@ -38,9 +38,6 @@ services:
     expose:
       - "9000"
       - "9001"
-    ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -84,8 +81,6 @@ services:
         condition: service_healthy
     expose:
       - "8080"
-    ports:
-      - "${BACKEND_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8080/healthz"]
       interval: 15s
@@ -102,21 +97,15 @@ services:
       BACKEND_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
       VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET}
       ALLOWED_ORIGINS: ${VOICE_AGENT_ALLOWED_ORIGINS:-*}
-      # Per-call RTP pool. advertise_host es lo que Asterisk usa para devolver el audio:
-      # nombre del servicio dentro de la red Docker (compose) o la IP pública si Asterisk
-      # corre fuera del cluster.
       RTP_PORT_START: ${RTP_PORT_START:-12000}
       RTP_PORT_END: ${RTP_PORT_END:-12099}
       RTP_ADVERTISE_HOST: ${RTP_ADVERTISE_HOST:-voice-agent}
-      # ─────────────────────────────────────────────────────────────────────
-      # Provider API keys (OpenAI / Deepgram / AssemblyAI) viven en Postgres
-      # (tabla tenant_voice_credentials). Cada tenant las configura desde
-      # /portal/settings. NO se ponen aquí.
-      # ─────────────────────────────────────────────────────────────────────
+      # API keys (OpenAI / Deepgram / AssemblyAI) viven en Postgres
+      # (tabla tenant_voice_credentials), configurables desde /portal/settings.
     expose:
       - "8090"
     ports:
-      - "${VOICE_AGENT_PORT:-8091}:8090"
+      # RTP es UDP y Coolify/Traefik no lo proxean. Necesita binding directo al host.
       - "${RTP_PORT_START:-12000}-${RTP_PORT_END:-12099}:12000-12099/udp"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8090/healthz"]
@@ -136,8 +125,6 @@ services:
       - backend
     expose:
       - "3000"
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:3000"]
       interval: 15s
@@ -146,8 +133,7 @@ services:
       start_period: 15s
 
   asterisk:
-    build:
-      context: ./asterisk
+    image: andrius/asterisk:latest
     restart: unless-stopped
     environment:
       ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-timbre}
@@ -156,19 +142,14 @@ services:
       - ./asterisk/etc/asterisk:/etc/asterisk:ro
       - asterisk_spool:/var/spool/asterisk
       - asterisk_logs:/var/log/asterisk
+    expose:
+      - "8088"
     ports:
-      # RTP del trunk SIP (audio entrante/saliente del proveedor). Siempre necesario.
+      # RTP del trunk SIP — UDP directo al host (Traefik no rutea UDP).
       - "${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10020}:10000-10020/udp"
-      # SIP signaling (5060/udp) NO se mapea por defecto. Outbound funciona sin él
-      # porque Asterisk inicia la conexión hacia el trunk. Si vas a recibir inbound,
-      # crea un docker-compose.override.yml con:
-      #
-      #   services:
-      #     asterisk:
-      #       ports:
-      #         - "5060:5060/udp"
-      #
-      # o mapéalo a otro puerto del host (ej. "5070:5060/udp") si 5060 está ocupado.
+      # SIP signaling (5060/udp) NO se mapea por defecto. Outbound no lo requiere.
+      # Para inbound: añade un docker-compose.override.yml o mapea desde Coolify
+      # con un puerto del host libre (ej. "5070:5060/udp").
 
 volumes:
   postgres_data:
