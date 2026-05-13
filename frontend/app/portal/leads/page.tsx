@@ -6,13 +6,24 @@ export default async function LeadsPage() {
   return (
     <>
       <div className="topbar">
-        <div>
+        <div className="page-title">
           <p className="eyebrow">Portal cliente</p>
           <h1>Leads</h1>
-          <p className="subtle">Contactos disponibles para campañas y llamadas de seguimiento.</p>
+          <p className="subtle">Contactos disponibles para campanas, llamadas de seguimiento y handoff comercial.</p>
         </div>
-        <button className="button">Importar CSV</button>
+        <div className="actions">
+          <button className="button secondary">Nuevo lead</button>
+          <button className="button">Importar CSV</button>
+        </div>
       </div>
+
+      <div className="filter-row">
+        <span className="chip">Renter</span>
+        <span className="chip">Owner</span>
+        <span className="chip">Con consentimiento</span>
+        <span className="chip">Callback</span>
+      </div>
+
       <div className="table-wrap">
         <table>
           <thead>
@@ -22,17 +33,19 @@ export default async function LeadsPage() {
               <th>Email</th>
               <th>Tipo</th>
               <th>Estado</th>
+              <th>Fuente</th>
               <th>Consentimiento</th>
             </tr>
           </thead>
           <tbody>
             {leads.map((lead) => (
               <tr key={lead.id}>
-                <td>{lead.name}</td>
+                <td className="primary-cell">{lead.name}</td>
                 <td>{lead.phone}</td>
                 <td>{lead.email}</td>
-                <td>{lead.type}</td>
+                <td><span className="chip">{lead.type}</span></td>
                 <td><span className={statusClass(lead.status)}>{lead.status}</span></td>
+                <td>{lead.source}</td>
                 <td>{lead.consent}</td>
               </tr>
             ))}
@@ -42,4 +55,3 @@ export default async function LeadsPage() {
     </>
   );
 }
-

@@ -6,25 +6,41 @@ export default async function PropertiesPage() {
   return (
     <>
       <div className="topbar">
-        <div>
+        <div className="page-title">
           <p className="eyebrow">Portal cliente</p>
           <h1>Propiedades</h1>
-          <p className="subtle">Conocimiento verificado que el bot puede usar en llamada.</p>
+          <p className="subtle">Conocimiento verificado que el bot puede usar en llamada sin inventar condiciones.</p>
         </div>
-        <button className="button">Nueva propiedad</button>
+        <div className="actions">
+          <button className="button secondary">Importar</button>
+          <button className="button">Nueva propiedad</button>
+        </div>
       </div>
+
       <div className="grid two">
         {properties.map((property) => (
           <section className="panel" key={property.id}>
-            <p className="eyebrow">{property.address}</p>
-            <h2>{property.name}</h2>
-            <p><strong>{property.price}</strong> · {property.availability}</p>
-            <p className="subtle">Requisitos: {property.requirements.join(", ")}</p>
-            <p className="subtle">FAQs: {property.faqs.join(", ")}</p>
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">{property.address}</p>
+                <h2>{property.name}</h2>
+              </div>
+              <span className="status good">{property.availability}</span>
+            </div>
+            <p><strong>{property.price}</strong></p>
+            <div className="command-strip">
+              <div>
+                <h3>Requisitos</h3>
+                <p className="subtle">{property.requirements.join(", ")}</p>
+              </div>
+              <div>
+                <h3>FAQs</h3>
+                <p className="subtle">{property.faqs.join(", ")}</p>
+              </div>
+            </div>
           </section>
         ))}
       </div>
     </>
   );
 }
-

@@ -7,24 +7,74 @@ export default async function OperationsPage() {
   return (
     <>
       <div className="topbar">
-        <div>
+        <div className="page-title">
           <p className="eyebrow">Admin interno</p>
           <h1>Operaciones</h1>
-          <p className="subtle">Vista de salud para telefonia, colas y actividad global.</p>
+          <p className="subtle">Salud de telefonia, colas, IA y actividad global de la plataforma.</p>
         </div>
-        <button className="button secondary">Ver logs</button>
+        <div className="actions">
+          <button className="button secondary">Ver logs</button>
+          <button className="button">Abrir incidente</button>
+        </div>
       </div>
+
       <div className="grid">
-        <StatCard label="Llamadas" value={overview.callsToday} hint="Actividad demo actual" />
-        <StatCard label="En cola" value={overview.queuedCalls} hint="Pendientes de worker" />
-        <StatCard label="Campañas" value={overview.activeCampaigns} hint="Programadas" />
-        <StatCard label="Callbacks" value={overview.callbacks} hint="Necesitan accion" />
+        <StatCard label="Llamadas" value={overview.callsToday} hint="Actividad demo actual" trend="ARI pendiente" />
+        <StatCard label="En cola" value={overview.queuedCalls} hint="Pendientes de worker" trend="Redis listo" />
+        <StatCard label="Campanas" value={overview.activeCampaigns} hint="Programadas" trend="Scheduler next" />
+        <StatCard label="Callbacks" value={overview.callbacks} hint="Necesitan accion" trend="CRM next" />
       </div>
-      <section className="panel" style={{ marginTop: 16 }}>
-        <h2>Estado de integraciones</h2>
-        <p className="subtle">Asterisk ARI, Postgres y Redis estan definidos en Docker Compose. La conexion real de originate queda para la siguiente iteracion.</p>
-      </section>
+
+      <div className="grid two" style={{ marginTop: 16 }}>
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Infraestructura</p>
+              <h2>Servicios definidos</h2>
+            </div>
+            <span className="status good">Compose OK</span>
+          </div>
+          <div className="command-strip">
+            <div className="command-row">
+              <span>Backend Go</span>
+              <span className="status good">Activo local</span>
+            </div>
+            <div className="command-row">
+              <span>Asterisk ARI</span>
+              <span className="status warn">Sin worker</span>
+            </div>
+            <div className="command-row">
+              <span>Voice agent</span>
+              <span className="status warn">Pendiente</span>
+            </div>
+          </div>
+        </section>
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Latencia</p>
+              <h2>Pipeline objetivo</h2>
+            </div>
+            <span className="chip">Realtime</span>
+          </div>
+          <div className="metric-list">
+            <div>
+              <div className="metric-item">
+                <span>Audio in/out</span>
+                <strong>250 ms</strong>
+              </div>
+              <div className="meter"><span style={{ width: "32%" }} /></div>
+            </div>
+            <div>
+              <div className="metric-item">
+                <span>Turn taking</span>
+                <strong>450 ms</strong>
+              </div>
+              <div className="meter"><span style={{ width: "48%" }} /></div>
+            </div>
+          </div>
+        </section>
+      </div>
     </>
   );
 }
-

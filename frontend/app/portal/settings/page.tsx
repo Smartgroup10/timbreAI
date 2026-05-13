@@ -2,14 +2,25 @@ export default function SettingsPage() {
   return (
     <>
       <div className="topbar">
-        <div>
+        <div className="page-title">
           <p className="eyebrow">Portal cliente</p>
           <h1>Configuracion</h1>
           <p className="subtle">Parametros de cuenta, telefonia, integraciones y cumplimiento.</p>
         </div>
-        <button className="button">Guardar</button>
+        <div className="actions">
+          <button className="button secondary">Restaurar</button>
+          <button className="button">Guardar</button>
+        </div>
       </div>
+
       <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Cuenta</p>
+            <h2>Operacion de llamadas</h2>
+          </div>
+          <span className="status warn">Sandbox</span>
+        </div>
         <div className="form-grid">
           <div className="field">
             <label>Zona horaria</label>
@@ -35,4 +46,3 @@ export default function SettingsPage() {
     </>
   );
 }
-
