@@ -64,6 +64,15 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
 
+	// Deepgram Voice Agent handshake: el servidor manda "Welcome" primero,
+	// luego nosotros mandamos "Settings", luego él contesta "SettingsApplied".
+	// Sin esto la sesión queda en estado inválido y se cierra silenciosamente
+	// (referencia: Smartgroup10/SmartSIP/services/go-service/.../deepgram_agent.go).
+	if err := waitDeepgramEvent(ctx, conn, "Welcome", 10*time.Second); err != nil {
+		emit(s, session.Event{Type: "error", Message: "deepgram_welcome: " + err.Error()})
+		return fmt.Errorf("deepgram welcome: %w", err)
+	}
+
 	// Settings: full agent configuration in a single message.
 	settings := map[string]any{
 		"type": "Settings",
@@ -98,7 +107,29 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 	if err := writeJSON(ctx, conn, settings); err != nil {
 		return err
 	}
+	if err := waitDeepgramEvent(ctx, conn, "SettingsApplied", 10*time.Second); err != nil {
+		emit(s, session.Event{Type: "error", Message: "deepgram_settings_applied: " + err.Error()})
+		return fmt.Errorf("deepgram settings applied: %w", err)
+	}
 	emit(s, session.Event{Type: "status", State: "ready"})
+
+	// KeepAlive: Deepgram cierra la conexión si pasan ~10s sin tráfico binario
+	// O de control. Mientras el caller esté en silencio (no manda audio) el
+	// WS se cae. Mandamos {"type":"KeepAlive"} cada 5s.
+	keepAliveCtx, keepAliveCancel := context.WithCancel(ctx)
+	defer keepAliveCancel()
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-keepAliveCtx.Done():
+				return
+			case <-t.C:
+				_ = writeJSON(keepAliveCtx, conn, map[string]any{"type": "KeepAlive"})
+			}
+		}
+	}()
 
 	// Goroutine: pump caller audio (binary PCM16) to Deepgram.
 	// Contadores para diagnosticar "Deepgram dice CLIENT_MESSAGE_TIMEOUT" —
@@ -155,6 +186,37 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 		case websocket.MessageText:
 			d.handleEvent(raw, s)
 		}
+	}
+}
+
+// waitDeepgramEvent lee del WS hasta encontrar un evento JSON con el `type`
+// indicado. Ignora frames binarios (no aplica durante handshake) y otros
+// eventos de texto. Aborta si llega un Error o se agota el timeout.
+func waitDeepgramEvent(ctx context.Context, conn *websocket.Conn, expected string, timeout time.Duration) error {
+	deadline, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for {
+		msgType, raw, err := conn.Read(deadline)
+		if err != nil {
+			return err
+		}
+		if msgType != websocket.MessageText {
+			continue
+		}
+		var probe struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+		}
+		if err := json.Unmarshal(raw, &probe); err != nil {
+			continue
+		}
+		switch probe.Type {
+		case expected:
+			return nil
+		case "Error", "ErrorResponse":
+			return fmt.Errorf("deepgram error: %s", probe.Description)
+		}
+		// Cualquier otro evento (Warning, etc.) lo ignoramos hasta el esperado.
 	}
 }
 

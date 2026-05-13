@@ -73,6 +73,15 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 	if err := writeJSON(ctx, conn, initMsg); err != nil {
 		return err
 	}
+
+	// Disparar el greeting: response.create hace que el modelo hable PRIMERO
+	// (usando las instructions del system prompt). Sin esto el agente espera
+	// a que el caller hable antes de saludar, y la llamada se siente muerta.
+	// Patrón copiado de Smartgroup10/SmartSIP que sí funciona en prod.
+	if err := writeJSON(ctx, conn, map[string]any{"type": "response.create"}); err != nil {
+		o.logger.Warn("openai response.create", "session", s.ID, "error", err)
+	}
+
 	emit(s, session.Event{Type: "status", State: "ready"})
 
 	// Goroutine: pump audio frames from session.AudioIn → OpenAI as input_audio_buffer.append.
