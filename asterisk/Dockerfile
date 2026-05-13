@@ -1,10 +1,15 @@
-# Pre-built community image: trae chan_pjsip, res_ari, res_config_pgsql, core
-# sounds y arranca como usuario `asterisk` sin trampas.
+# Pre-built community image — base Debian, trae chan_pjsip, res_ari, res_odbc.
 FROM andrius/asterisk:latest
 
-# Toda la config la genera entrypoint.sh en runtime (patrón inspirado en
-# Smartgroup10/SmartSIP). Eso permite interpolar env vars sin envsubst y nos
-# da una única fuente de verdad de configs.
+# unixODBC + driver de Postgres. res_config_pgsql nativo no parsea bien la
+# config en esta build de Asterisk (parse_config no encuentra dbuser/dbpass
+# aunque el .conf esté bien). Vamos por ODBC, que es el camino que usa el
+# repo Smartgroup10/SmartSIP en producción.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    unixodbc odbc-postgresql \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
