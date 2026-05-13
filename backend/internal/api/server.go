@@ -93,6 +93,8 @@ func (s *Server) Handler() http.Handler {
 	// Per-tenant voice provider credentials (API keys + models). Masked on read.
 	mux.HandleFunc("GET /api/tenant/voice-credentials", s.requireTenantAdmin(s.handleGetVoiceCredentials))
 	mux.HandleFunc("PATCH /api/tenant/voice-credentials", s.requireTenantAdmin(s.handleUpdateVoiceCredentials))
+	mux.HandleFunc("POST /api/tenant/voice-credentials/test", s.requireTenantAdmin(s.handleTestVoiceCredentials))
+	mux.HandleFunc("GET /api/voice-catalog", s.requireAuth(s.handleGetVoiceCatalog))
 
 	// Per-tenant user management (tenant_admin or platform_admin).
 	mux.HandleFunc("GET /api/tenant/users", s.requireTenantAdmin(s.handleListTenantUsers))

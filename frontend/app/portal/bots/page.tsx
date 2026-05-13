@@ -1,21 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, Bot, DID, statusClass } from "../../../lib/api";
+import { api, ApiError, Bot, DID, VoiceCredentials, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
 const BOT_TYPES = ["renter_inbound", "owner_outbound", "support", "qualification"];
 const BOT_STATUSES = ["draft", "active", "paused"];
-const VOICES = ["warm", "confident", "neutral", "energetic"];
-const VOICE_PROVIDERS: { value: string; label: string; hint: string }[] = [
-  { value: "echo", label: "Echo (sandbox)", hint: "Sin API key. Devuelve el audio que recibe." },
-  { value: "openai_realtime", label: "OpenAI Realtime", hint: "End-to-end audio. Necesita OPENAI_API_KEY." },
-  { value: "deepgram", label: "Deepgram + LLM", hint: "Nova-3 ASR + LLM + Aura TTS. Necesita DEEPGRAM_API_KEY." },
-  { value: "assemblyai", label: "AssemblyAI + LLM", hint: "Universal Streaming + LLM + TTS. Necesita ASSEMBLYAI_API_KEY." },
-];
+
+type CatalogProvider = {
+  id: string;
+  label: string;
+  models: { id: string; label: string }[];
+  voices: { id: string; label: string }[];
+  extraFields?: string[];
+};
 
 type EditState = { bot: Bot | null; mode: "edit" | "create" } | null;
 
@@ -204,12 +205,53 @@ function BotEditor({
   const [name, setName] = useState(bot?.name ?? "");
   const [type, setType] = useState(bot?.type ?? "renter_inbound");
   const [language, setLanguage] = useState(bot?.language ?? "es-ES");
-  const [voice, setVoice] = useState(bot?.voice ?? "warm");
+  const [voice, setVoice] = useState(bot?.voice ?? "");
   const [status, setStatus] = useState(bot?.status ?? "draft");
   const [objective, setObjective] = useState(bot?.objective ?? "");
   const [guardrails, setGuardrails] = useState((bot?.guardrails ?? []).join("\n"));
   const [voiceProvider, setVoiceProvider] = useState(bot?.voiceProvider ?? "echo");
   const [submitting, setSubmitting] = useState(false);
+
+  // Catálogo estático de providers/voces (servido por backend) + qué providers
+  // tienen API key en este tenant. Combinamos ambos para mostrar SOLO los
+  // providers usables — el sandbox echo siempre.
+  const [catalog, setCatalog] = useState<CatalogProvider[]>([]);
+  const [enabledProviders, setEnabledProviders] = useState<Set<string>>(new Set(["echo"]));
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [cat, creds] = await Promise.all([api.voiceCatalog(), api.voiceCredentials(tenant)]);
+        if (cancelled) return;
+        setCatalog(cat.providers);
+        const enabled = new Set<string>(["echo"]);
+        // El backend devuelve las API keys enmascaradas (•••• + últimos 4). Si
+        // hay enmascarado, hay key real configurada → provider habilitado.
+        if (creds.openaiApiKey) enabled.add("openai_realtime");
+        if (creds.deepgramApiKey) enabled.add("deepgram");
+        if (creds.assemblyaiApiKey) enabled.add("assemblyai");
+        setEnabledProviders(enabled);
+      } catch {
+        // si falla, dejamos echo solamente — el operador sigue pudiendo crear bots.
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenant]);
+
+  const currentProvider = catalog.find((p) => p.id === voiceProvider);
+  const voiceOptions = currentProvider?.voices ?? [];
+
+  // Si el voice actual no está en la lista del provider seleccionado, lo
+  // limpiamos para evitar enviar basura al backend.
+  useEffect(() => {
+    if (voice && voiceOptions.length > 0 && !voiceOptions.some((v) => v.id === voice)) {
+      setVoice(voiceOptions[0]?.id ?? "");
+    }
+  }, [voiceProvider, voiceOptions.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -284,26 +326,42 @@ function BotEditor({
             </div>
             <div className="field">
               <label>Voz</label>
-              <select value={voice} onChange={(e) => setVoice(e.target.value)}>
-                {VOICES.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
+              <select value={voice} onChange={(e) => setVoice(e.target.value)} disabled={voiceOptions.length === 0}>
+                {voiceOptions.length === 0 ? (
+                  <option value="">— No aplica para este provider —</option>
+                ) : (
+                  <>
+                    <option value="">— Default del provider —</option>
+                    {voiceOptions.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
           </div>
           <div className="field">
             <label>Provider de voz</label>
             <select value={voiceProvider} onChange={(e) => setVoiceProvider(e.target.value)}>
-              {VOICE_PROVIDERS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
+              <option value="echo">Echo (sandbox sin API key)</option>
+              {catalog.map((p) => {
+                const isEnabled = enabledProviders.has(p.id);
+                return (
+                  <option key={p.id} value={p.id} disabled={!isEnabled}>
+                    {p.label}
+                    {isEnabled ? "" : " — falta API key en Configuración"}
+                  </option>
+                );
+              })}
             </select>
             <p className="subtle" style={{ marginTop: 4 }}>
-              {VOICE_PROVIDERS.find((p) => p.value === voiceProvider)?.hint}
+              {voiceProvider === "echo"
+                ? "Devuelve el audio que recibe. Útil para pruebas sin gasto en LLM/TTS."
+                : enabledProviders.has(voiceProvider)
+                ? `Llamadas con este bot usarán las credenciales del tenant para ${currentProvider?.label}.`
+                : `Configura primero la API key en /portal/settings antes de usar ${currentProvider?.label}.`}
             </p>
           </div>
           <div className="field">

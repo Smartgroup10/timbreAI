@@ -389,6 +389,17 @@ export const api = {
     request<VoiceCredentials>("GET", withTenant("/api/tenant/voice-credentials", tenantOverride)),
   updateVoiceCredentials: (patch: Partial<VoiceCredentials>, tenantOverride?: string) =>
     request<VoiceCredentials>("PATCH", withTenant("/api/tenant/voice-credentials", tenantOverride), patch),
+  testVoiceCredentials: (provider: string, tenantOverride?: string) =>
+    request<{ ok: boolean; error?: string }>(
+      "POST",
+      withTenant("/api/tenant/voice-credentials/test", tenantOverride),
+      { provider },
+    ),
+  voiceCatalog: () =>
+    request<{ providers: { id: string; label: string; models: { id: string; label: string }[]; voices: { id: string; label: string }[]; extraFields?: string[] }[] }>(
+      "GET",
+      "/api/voice-catalog",
+    ),
 
   tenantUsers: (tenantOverride?: string) =>
     request<User[]>("GET", withTenant("/api/tenant/users", tenantOverride)),

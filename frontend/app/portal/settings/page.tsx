@@ -597,6 +597,8 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
       <div className="grid two">
         <ProviderBlock
           title="OpenAI Realtime"
+          providerId="openai_realtime"
+          tenant={tenant}
           subtitle="ASR + LLM + TTS end-to-end. Recomendado para latencia mínima."
           c={c}
           draft={draft}
@@ -609,6 +611,8 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
         />
         <ProviderBlock
           title="Deepgram Voice Agent"
+          providerId="deepgram"
+          tenant={tenant}
           subtitle="wss://agent.deepgram.com — listen + think + speak en un único socket."
           c={c}
           draft={draft}
@@ -617,13 +621,15 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
             { key: "deepgramListenModel", label: "Modelo Listen (ASR)", placeholder: "nova-3" },
             { key: "deepgramThinkProvider", label: "Provider LLM", placeholder: "open_ai · anthropic · ..." },
             { key: "deepgramThinkModel", label: "Modelo LLM", placeholder: "gpt-4o-mini" },
-            { key: "deepgramSpeakModel", label: "Modelo Speak (TTS)", placeholder: "aura-asteria-en" },
+            { key: "deepgramSpeakModel", label: "Modelo Speak (TTS)", placeholder: "aura-2-thalia-en" },
             { key: "deepgramGreeting", label: "Saludo inicial (opcional)", placeholder: "Hola, soy el asistente..." },
           ]}
           setField={setField}
         />
         <ProviderBlock
           title="AssemblyAI Voice Agent"
+          providerId="assemblyai"
+          tenant={tenant}
           subtitle="wss://agents.assemblyai.com — LLM y TTS hospedados por AssemblyAI."
           c={c}
           draft={draft}
@@ -642,6 +648,8 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
 function ProviderBlock<K extends keyof VoiceCredentials>({
   title,
   subtitle,
+  providerId,
+  tenant,
   c,
   draft,
   fields,
@@ -649,15 +657,53 @@ function ProviderBlock<K extends keyof VoiceCredentials>({
 }: {
   title: string;
   subtitle: string;
+  providerId: string;
+  tenant: string | undefined;
   c: VoiceCredentials | null;
   draft: Partial<VoiceCredentials>;
   fields: { key: K; label: string; type?: string; placeholder?: string }[];
   setField: <KK extends keyof VoiceCredentials>(key: KK, value: VoiceCredentials[KK]) => void;
 }) {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await api.testVoiceCredentials(providerId, tenant);
+      setTestResult(
+        r.ok
+          ? { ok: true, msg: "Key válida y servidor accesible." }
+          : { ok: false, msg: r.error ?? "Fallo desconocido." },
+      );
+    } catch (err) {
+      setTestResult({ ok: false, msg: err instanceof ApiError ? err.code : "error" });
+    } finally {
+      setTesting(false);
+    }
+  }
+
   return (
     <div className="panel" style={{ background: "var(--paper)", padding: 18 }}>
-      <p className="eyebrow">{title}</p>
-      <p className="subtle" style={{ marginBottom: 12 }}>{subtitle}</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div>
+          <p className="eyebrow">{title}</p>
+          <p className="subtle" style={{ marginBottom: 12 }}>{subtitle}</p>
+        </div>
+        <button type="button" className="button ghost compact" onClick={handleTest} disabled={testing}>
+          {testing ? "Probando…" : "Probar conexión"}
+        </button>
+      </div>
+      {testResult ? (
+        <p
+          className={testResult.ok ? "status good" : "status danger"}
+          style={{ marginBottom: 12, display: "inline-block" }}
+        >
+          {testResult.ok ? "✓ " : "✗ "}
+          {testResult.msg}
+        </p>
+      ) : null}
       <div style={{ display: "grid", gap: 10 }}>
         {fields.map((f) => {
           const current = draft[f.key] ?? (c ? (c[f.key] as string) : "");
