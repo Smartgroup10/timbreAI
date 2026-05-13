@@ -7,10 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"timbre/backend/internal/ari"
+	"timbre/backend/internal/app"
 	"timbre/backend/internal/auth"
 	"timbre/backend/internal/store"
-	"timbre/backend/internal/voiceagent"
 )
 
 // --- Auth ---
@@ -254,7 +253,6 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 	// platform_admin que no tiene tenant en el JWT). Si no hay bot, exigimos
 	// tenant scope del JWT/query — sin bot el test call sale por el sandbox
 	// interno y necesita un tenant explícito para registrar la llamada.
-	var bot store.Bot
 	var tenantID string
 	if req.BotID != "" {
 		b, err := s.store.GetBotByID(r.Context(), req.BotID)
@@ -267,7 +265,6 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "lookup_failed")
 			return
 		}
-		bot = b
 		tenantID = b.TenantID
 		// Si el caller tiene tenant en el JWT, debe coincidir con el del bot
 		// (un tenant_admin no puede lanzar test call contra un bot ajeno).
@@ -290,35 +287,13 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve outbound route. If the caller picked a bot, use its assigned DID + trunk.
-	// Otherwise fall back to the internal sandbox extension so the plumbing still works.
-	endpoint := s.cfg.SIP.TestExtension
-	callerID := s.cfg.SIP.CallerID
+	// Crear la fila en calls antes de marcar — así si el dial falla queda
+	// histórico y el operador ve por qué.
 	routeNote := "internal_sandbox"
-	var didID, trunkEndpoint string
-
 	if req.BotID != "" {
-		did, err := s.store.LookupDIDForBot(r.Context(), tenantID, req.BotID)
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				writeError(w, http.StatusBadRequest, "bot_has_no_did")
-				return
-			}
-			s.logger.Error("lookup did", "error", err)
-			writeError(w, http.StatusInternalServerError, "lookup_failed")
-			return
-		}
-		endpoint = "PJSIP/" + req.Phone + "@" + did.AsteriskEndpoint
-		callerID = did.Label
-		if callerID == "" {
-			callerID = "timbre.ai <" + did.E164 + ">"
-		}
-		didID = did.ID
-		trunkEndpoint = did.AsteriskEndpoint
 		routeNote = "bot_did"
 	}
-
-	call := store.Call{
+	created, err := s.store.CreateCall(r.Context(), store.Call{
 		TenantID: tenantID,
 		Phone:    req.Phone,
 		LeadName: defaultStr(req.LeadName, "Test call"),
@@ -326,133 +301,48 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 		Status:   "queued",
 		Outcome:  "pending",
 		Summary:  "Manual test call originated from portal (" + routeNote + ").",
-	}
-	created, err := s.store.CreateCall(r.Context(), call)
+	})
 	if err != nil {
 		s.logger.Error("create test call", "error", err)
 		writeError(w, http.StatusInternalServerError, "create_failed")
 		return
 	}
 	s.audit(r, "call.test_originate", "call", created.ID, map[string]any{
-		"phone": req.Phone, "botId": req.BotID, "didId": didID, "route": routeNote,
+		"phone": req.Phone, "botId": req.BotID, "route": routeNote,
 	})
-
-	// Register a voice-agent session if available. Best-effort: failures don't block the call.
-	if s.voiceAgent != nil && s.voiceAgent.Enabled() && req.BotID != "" {
-		provider := bot.VoiceProvider
-		if provider == "" {
-			provider = "echo"
-		}
-		// Load tenant overrides so the voice-agent uses this client's own API keys/models.
-		var creds voiceagent.Credentials
-		if vc, err := s.store.GetVoiceCredentials(r.Context(), tenantID); err == nil {
-			creds = voiceagent.Credentials{
-				OpenAIAPIKey:          vc.OpenAIAPIKey,
-				OpenAIRealtimeModel:   vc.OpenAIRealtimeModel,
-				OpenAIRealtimeVoice:   vc.OpenAIRealtimeVoice,
-				DeepgramAPIKey:        vc.DeepgramAPIKey,
-				DeepgramListenModel:   vc.DeepgramListenModel,
-				DeepgramThinkProvider: vc.DeepgramThinkProvider,
-				DeepgramThinkModel:    vc.DeepgramThinkModel,
-				DeepgramSpeakModel:    vc.DeepgramSpeakModel,
-				DeepgramGreeting:      vc.DeepgramGreeting,
-				AssemblyAIAPIKey:      vc.AssemblyAIAPIKey,
-				AssemblyAIVoice:       vc.AssemblyAIVoice,
-				AssemblyAIGreeting:    vc.AssemblyAIGreeting,
-			}
-		}
-		// Downgrade a 'echo' si el provider del bot exige credenciales que el
-		// tenant no ha configurado. Si no, el provider arranca, falla al hacer
-		// dial (sin API key), el goroutine muere, registry.Remove deja la
-		// sesión huérfana y AllocateRTP devuelve 404 → la llamada se cuelga
-		// al descolgar el callee. Con echo al menos el bridge de audio
-		// funciona y el operador puede confirmar el plumbing.
-		hasCreds := true
-		switch provider {
-		case "openai_realtime":
-			hasCreds = creds.OpenAIAPIKey != ""
-		case "deepgram":
-			hasCreds = creds.DeepgramAPIKey != ""
-		case "assemblyai":
-			hasCreds = creds.AssemblyAIAPIKey != ""
-		}
-		if !hasCreds {
-			s.logger.Warn("test call: no creds for provider, fallback to echo",
-				"bot", req.BotID, "provider", provider)
-			provider = "echo"
-		}
-
-		voiceCtx, cancel := contextWithTimeout(r.Context(), 5*time.Second)
-		sess, err := s.voiceAgent.CreateSession(voiceCtx, voiceagent.Config{
-			CallID:      created.ID,
-			TenantID:    tenantID,
-			BotID:       req.BotID,
-			Provider:    provider,
-			Objective:   bot.Objective,
-			Guardrails:  bot.Guardrails,
-			Language:    bot.Language,
-			Voice:       bot.Voice,
-			LeadName:    req.LeadName,
-			Credentials: creds,
-		})
-		cancel()
-		if err != nil {
-			s.logger.Warn("voice-agent session create", "error", err)
-		} else {
-			_ = s.store.SetCallVoiceSession(r.Context(), tenantID, created.ID, sess.ID)
-			created.VoiceSessionID = sess.ID
-			s.audit(r, "voice.session_created", "voice_session", sess.ID, map[string]any{
-				"provider": sess.Provider, "callId": created.ID,
-			})
-		}
-	}
 
 	if !s.cfg.ARI.Enabled || s.ari == nil {
 		writeJSON(w, http.StatusAccepted, map[string]any{
-			"call":     created,
-			"endpoint": endpoint,
-			"didId":    didID,
-			"trunk":    trunkEndpoint,
-			"message":  "ARI disabled. Set ASTERISK_ARI_ENABLED=true to originate real channels.",
+			"call":    created,
+			"message": "ARI disabled. Set ASTERISK_ARI_ENABLED=true to originate real channels.",
 		})
 		return
 	}
 
-	originateCtx, cancel := contextWithTimeout(r.Context(), s.cfg.SIP.OriginateTimeout)
-	defer cancel()
-
-	ch, err := s.ari.Originate(originateCtx, ari.OriginateRequest{
-		Endpoint: endpoint,
-		AppArgs:  created.ID + "," + tenantID,
-		CallerID: callerID,
-		Timeout:  int(s.cfg.SIP.OriginateTimeout.Seconds()),
-		Variables: map[string]string{
-			"TIMBRE_CALL_ID": created.ID,
-			"TIMBRE_TENANT":  tenantID,
-			"TIMBRE_BOT":     req.BotID,
-			"TIMBRE_DID":     didID,
-		},
-	})
+	// Misma lógica que usa el worker para campañas — vive en app.DialCall.
+	res, err := app.DialCall(r.Context(), app.DialDeps{
+		Store:      s.store,
+		ARI:        s.ari,
+		VoiceAgent: s.voiceAgent,
+		Cfg:        s.cfg,
+		Logger:     s.logger,
+	}, created, req.BotID)
 	if err != nil {
-		s.logger.Error("ari originate", "error", err, "call_id", created.ID, "endpoint", endpoint)
+		s.logger.Error("test dial failed", "error", err, "call_id", created.ID)
+		_ = s.store.MarkCallSkipped(r.Context(), created.ID, "originate_failed", err.Error())
 		writeError(w, http.StatusBadGateway, "ari_originate_failed")
 		return
 	}
-	if err := s.store.UpdateCallChannel(r.Context(), tenantID, created.ID, ch.ID, "dialing"); err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.logger.Warn("update call channel", "error", err)
-	}
-	created.ChannelID = ch.ID
+
+	created.ChannelID = res.ChannelID
+	created.VoiceSessionID = res.VoiceSessionID
 	created.Status = "dialing"
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"call":     created,
-		"channel":  ch,
-		"endpoint": endpoint,
-		"didId":    didID,
-		"trunk":    trunkEndpoint,
+		"endpoint": res.Endpoint,
+		"didId":    res.DIDID,
 	})
 }
-
-var _ = strings.ReplaceAll
 
 // --- Admin ---
 

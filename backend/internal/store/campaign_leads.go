@@ -121,18 +121,32 @@ type DispatchableCampaignLead struct {
 	LeadPhone      string
 	CampaignName   string
 	BotID          string
+	MaxConcurrent  int
 }
 
+// NextDispatchableForCampaign devuelve hasta `limit` campaign_leads listos para
+// ser marcados como llamada. Filtros:
+//   - campaign status = 'active'
+//   - start_at NULL o ya pasado
+//   - end_at NULL o aún no llegado
+//   - cl.status pending o failed (no calling/done/blocked)
+//   - attempts < max_attempts
+//   - cooldown elapsed
+//
+// FOR UPDATE SKIP LOCKED permite que dos réplicas del backend corran a la vez.
 func (s *Store) NextDispatchableForCampaign(ctx context.Context, limit int) ([]DispatchableCampaignLead, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT cl.id, cl.campaign_id, cl.tenant_id, cl.lead_id, l.name, l.phone, c.name, COALESCE(c.bot_id, '')
+		SELECT cl.id, cl.campaign_id, cl.tenant_id, cl.lead_id, l.name, l.phone, c.name,
+		       COALESCE(c.bot_id, ''), c.max_concurrent
 		FROM campaign_leads cl
 		JOIN campaigns c ON c.id = cl.campaign_id
 		JOIN leads l ON l.id = cl.lead_id
-		WHERE c.status = 'scheduled'
+		WHERE c.status = 'active'
+		  AND (c.start_at IS NULL OR c.start_at <= now())
+		  AND (c.end_at   IS NULL OR c.end_at   >= now())
 		  AND cl.status IN ('pending', 'failed')
 		  AND cl.attempts < c.max_attempts
 		  AND (cl.last_attempt_at IS NULL
@@ -148,7 +162,7 @@ func (s *Store) NextDispatchableForCampaign(ctx context.Context, limit int) ([]D
 	for rows.Next() {
 		var d DispatchableCampaignLead
 		if err := rows.Scan(&d.CampaignLeadID, &d.CampaignID, &d.TenantID, &d.LeadID,
-			&d.LeadName, &d.LeadPhone, &d.CampaignName, &d.BotID); err != nil {
+			&d.LeadName, &d.LeadPhone, &d.CampaignName, &d.BotID, &d.MaxConcurrent); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

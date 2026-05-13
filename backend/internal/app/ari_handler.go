@@ -21,18 +21,27 @@ import (
 //
 // All errors are logged but never crash the event loop. Failed bridges hang up the inbound
 // channel so the caller hears a fast-busy instead of dead silence.
+// releaseSlotFn libera el slot del semáforo de la campaña asociada a un callID.
+// Se inyecta desde main.go con worker.ReleaseSlot — pasamos la función en vez
+// de la dependencia entera para no acoplar app→worker.
+type releaseSlotFn func(callID string)
+
 func MakeARIHandler(
 	st *store.Store,
 	ariClient *ari.Client,
 	va *voiceagent.Client,
+	releaseSlot releaseSlotFn,
 	logger *slog.Logger,
 ) ari.EventHandler {
+	if releaseSlot == nil {
+		releaseSlot = func(string) {}
+	}
 	return func(ctx context.Context, ev ari.Event) {
 		switch ev.Type {
 		case "StasisStart":
 			handleStasisStart(ctx, ev, st, ariClient, va, logger)
 		case "ChannelDestroyed":
-			handleChannelDestroyed(ctx, ev, st, logger)
+			handleChannelDestroyed(ctx, ev, st, releaseSlot, logger)
 		case "ChannelStateChange":
 			logger.Debug("ari state change", "channel", channelID(ev))
 		}
@@ -131,7 +140,7 @@ func handleStasisStart(
 	logger.Info("stasis bridged", "call", call.ID, "bridge", bridgeID, "external_media", emCh.ID)
 }
 
-func handleChannelDestroyed(ctx context.Context, ev ari.Event, st *store.Store, logger *slog.Logger) {
+func handleChannelDestroyed(ctx context.Context, ev ari.Event, st *store.Store, releaseSlot releaseSlotFn, logger *slog.Logger) {
 	id := channelID(ev)
 	dur := extractDuration(ev.Raw)
 	cause := extractCause(ev.Raw)
@@ -146,8 +155,17 @@ func handleChannelDestroyed(ctx context.Context, ev ari.Event, st *store.Store, 
 	case strings.Contains(low, "congestion"), strings.Contains(low, "unavailable"):
 		status, outcome = "failed", "unreachable"
 	}
+	// Buscamos el callID asociado al canal ANTES de marcar la llamada finished
+	// (que también pone channel_id a "" en algunos paths).
+	callID := ""
+	if call, err := st.FindCallByChannel(ctx, id); err == nil {
+		callID = call.ID
+	}
 	if err := st.FinishCall(ctx, id, status, outcome, "", dur); err != nil {
 		logger.Warn("finish call", "channel", id, "error", err)
+	}
+	if callID != "" {
+		releaseSlot(callID)
 	}
 	logger.Info("channel destroyed", "channel", id, "cause", cause, "duration_sec", dur)
 }

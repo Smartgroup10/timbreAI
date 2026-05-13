@@ -1,40 +1,50 @@
+// Package worker corre el dispatcher de campañas: cada `interval` (30s por
+// defecto) mira qué campaign_leads están listos para ser llamados, valida la
+// elegibilidad (DNC, horario, daily cap) y origina la llamada vía ARI.
+//
+// La concurrencia se controla con un semáforo per-campaña basado en
+// campaigns.max_concurrent. Cuando una llamada termina (ChannelDestroyed),
+// el ARI handler llama a worker.ReleaseSlot(callID) para liberar el cupo.
 package worker
 
 import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
+	"timbre/backend/internal/app"
 	"timbre/backend/internal/store"
 )
 
-// Worker scans queued calls and decides whether each one is eligible to dispatch right now.
-// Eligibility checks:
-//   1. Phone is not in the tenant's Do Not Call list.
-//   2. Tenant's allowed_hours window covers the current moment (in the tenant's timezone).
-//   3. Today's call count for the tenant has not exceeded daily_call_cap.
-//
-// Calls that fail (1) are marked as skipped/blocked. Calls that fail (2) or (3) are left in the
-// queue to retry on a future tick.
 type Worker struct {
-	store    *store.Store
+	deps     app.DialDeps
 	logger   *slog.Logger
 	interval time.Duration
+
+	mu       sync.Mutex
+	sems     map[string]chan struct{} // campaignID → semáforo (buffered chan)
+	inFlight map[string]string        // callID → campaignID (para liberar al colgar)
 }
 
-func New(st *store.Store, logger *slog.Logger, interval time.Duration) *Worker {
+func New(deps app.DialDeps, interval time.Duration) *Worker {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
-	return &Worker{store: st, logger: logger, interval: interval}
+	return &Worker{
+		deps:     deps,
+		logger:   deps.Logger,
+		interval: interval,
+		sems:     map[string]chan struct{}{},
+		inFlight: map[string]string{},
+	}
 }
 
 func (w *Worker) Run(ctx context.Context) {
 	w.logger.Info("worker started", "interval", w.interval)
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
-	// Run once on boot so a freshly seeded DB gets evaluated immediately.
 	w.tick(ctx)
 	for {
 		select {
@@ -47,70 +57,160 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-func (w *Worker) tick(ctx context.Context) {
-	w.expandCampaigns(ctx)
+// ReleaseSlot libera el cupo del semáforo asociado a callID. Idempotente:
+// llamadas repetidas no hacen daño.
+func (w *Worker) ReleaseSlot(callID string) {
+	w.mu.Lock()
+	campaignID, ok := w.inFlight[callID]
+	if ok {
+		delete(w.inFlight, callID)
+	}
+	sem := w.sems[campaignID]
+	w.mu.Unlock()
+	if !ok || sem == nil {
+		return
+	}
+	select {
+	case <-sem:
+	default:
+	}
+}
 
-	queued, err := w.store.QueuedCalls(ctx, 50)
+// tryAcquire intenta tomar un slot del semáforo de campaignID. Si el semáforo
+// no existe lo crea con la capacidad pedida. Retorna false si está lleno.
+func (w *Worker) tryAcquire(campaignID string, maxConcurrent int) bool {
+	if maxConcurrent <= 0 {
+		maxConcurrent = 3
+	}
+	w.mu.Lock()
+	sem, ok := w.sems[campaignID]
+	// Si la campaña cambió max_concurrent en BD, recreamos el sem con la nueva
+	// capacidad (mientras esté vacío). Si está ocupado, esperamos al próximo
+	// tick para recrearlo.
+	if !ok || (cap(sem) != maxConcurrent && len(sem) == 0) {
+		sem = make(chan struct{}, maxConcurrent)
+		w.sems[campaignID] = sem
+	}
+	w.mu.Unlock()
+	select {
+	case sem <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *Worker) trackInFlight(callID, campaignID string) {
+	w.mu.Lock()
+	w.inFlight[callID] = campaignID
+	w.mu.Unlock()
+}
+
+func (w *Worker) tick(ctx context.Context) {
+	w.expandAndDial(ctx)
+}
+
+// expandAndDial:
+//  1. Pide a la BD los campaign_leads listos para llamar (status=active,
+//     start_at/end_at OK, attempts < max, cooldown OK).
+//  2. Para cada uno: valida DNC + horario + daily cap + semáforo. Si todo OK,
+//     crea la fila en calls (MarkCampaignLeadDispatched) y dispara DialCall
+//     en goroutine.
+func (w *Worker) expandAndDial(ctx context.Context) {
+	due, err := w.deps.Store.NextDispatchableForCampaign(ctx, 50)
 	if err != nil {
-		w.logger.Warn("worker list queued", "error", err)
+		w.logger.Warn("worker dispatch list", "error", err)
 		return
 	}
-	if len(queued) == 0 {
+	if len(due) == 0 {
 		return
 	}
-	// Cache tenant settings within a tick — most calls share the same tenant.
 	settingsCache := map[string]store.TenantSettings{}
 	countsCache := map[string]int{}
 
-	for _, call := range queued {
-		ts, ok := settingsCache[call.TenantID]
+	for _, d := range due {
+		// Tenant settings: horario y daily cap.
+		ts, ok := settingsCache[d.TenantID]
 		if !ok {
-			t, err := w.store.GetTenantSettings(ctx, call.TenantID)
+			t, err := w.deps.Store.GetTenantSettings(ctx, d.TenantID)
 			if err != nil {
-				w.logger.Warn("worker tenant settings", "tenant", call.TenantID, "error", err)
+				w.logger.Warn("worker tenant settings", "tenant", d.TenantID, "error", err)
 				continue
 			}
-			settingsCache[call.TenantID] = t
+			settingsCache[d.TenantID] = t
 			ts = t
 		}
-
-		// 1) DNC check.
-		blocked, err := w.store.IsBlockedPhone(ctx, call.TenantID, call.Phone)
-		if err == nil && blocked {
-			if err := w.store.MarkCallSkipped(ctx, call.ID, "dnc_blocked", "Number in do_not_call list at dispatch time."); err == nil {
-				w.logger.Info("worker blocked by dnc", "call", call.ID, "phone", call.Phone)
-			}
-			continue
-		}
-
-		// 2) Hours/days check.
 		if !withinWindow(ts) {
-			w.logger.Debug("worker out of window", "call", call.ID, "tenant", call.TenantID)
 			continue
 		}
 
-		// 3) Daily cap.
-		count, ok := countsCache[call.TenantID]
+		// DNC.
+		blocked, _ := w.deps.Store.IsBlockedPhone(ctx, d.TenantID, d.LeadPhone)
+		if blocked {
+			_ = w.deps.Store.SkipCampaignLead(ctx, d.CampaignLeadID, "dnc_blocked")
+			w.logger.Info("dispatcher dnc skip", "campaign", d.CampaignID, "lead", d.LeadID)
+			continue
+		}
+
+		// Daily cap.
+		count, ok := countsCache[d.TenantID]
 		if !ok {
-			n, err := w.store.CountCallsToday(ctx, call.TenantID, ts.Timezone)
+			n, err := w.deps.Store.CountCallsToday(ctx, d.TenantID, ts.Timezone)
 			if err != nil {
-				w.logger.Warn("worker count today", "tenant", call.TenantID, "error", err)
+				w.logger.Warn("worker count today", "error", err)
 				continue
 			}
-			countsCache[call.TenantID] = n
+			countsCache[d.TenantID] = n
 			count = n
 		}
 		if ts.DailyCallCap > 0 && count >= ts.DailyCallCap {
-			w.logger.Debug("worker cap reached", "tenant", call.TenantID, "cap", ts.DailyCallCap)
+			w.logger.Debug("worker cap reached", "tenant", d.TenantID, "cap", ts.DailyCallCap)
 			continue
 		}
 
-		// All checks passed. The actual ARI Originate happens inline in handleTestCall when a
-		// user triggers a manual test; the worker just marks the call eligible. When the campaign
-		// expander lands, this is where we'd call s.ari.Originate with the bot/DID context. For
-		// now we leave the call queued and bump the counter so cap math stays correct.
-		countsCache[call.TenantID] = count + 1
-		w.logger.Info("worker eligible", "call", call.ID, "tenant", call.TenantID, "phone", redactPhone(call.Phone))
+		// Concurrencia per-campaña.
+		if !w.tryAcquire(d.CampaignID, d.MaxConcurrent) {
+			continue // probaremos en el próximo tick
+		}
+		countsCache[d.TenantID] = count + 1
+
+		// Crear la fila en calls + bumpear campaign_lead.
+		call, err := w.deps.Store.MarkCampaignLeadDispatched(ctx, d)
+		if err != nil {
+			w.releaseImmediate(d.CampaignID)
+			w.logger.Warn("worker mark dispatched", "error", err, "campaign_lead", d.CampaignLeadID)
+			continue
+		}
+		w.trackInFlight(call.ID, d.CampaignID)
+
+		// Originate en background — no bloqueamos el tick.
+		go w.dialInBackground(ctx, call, d.BotID)
+	}
+}
+
+func (w *Worker) dialInBackground(ctx context.Context, call store.Call, botID string) {
+	res, err := app.DialCall(ctx, w.deps, call, botID)
+	if err != nil {
+		w.logger.Error("worker dial failed", "call", call.ID, "error", err)
+		_ = w.deps.Store.MarkCallSkipped(ctx, call.ID, "originate_failed", err.Error())
+		w.ReleaseSlot(call.ID) // libera el slot — no esperamos ChannelDestroyed
+		return
+	}
+	w.logger.Info("worker call originated", "call", call.ID, "channel", res.ChannelID, "phone", redactPhone(call.Phone))
+}
+
+// releaseImmediate libera un slot tomado por tryAcquire en el mismo tick si
+// algo falló antes de poder rastrear el callID.
+func (w *Worker) releaseImmediate(campaignID string) {
+	w.mu.Lock()
+	sem := w.sems[campaignID]
+	w.mu.Unlock()
+	if sem == nil {
+		return
+	}
+	select {
+	case <-sem:
+	default:
 	}
 }
 
@@ -163,31 +263,4 @@ func redactPhone(p string) string {
 		return "***"
 	}
 	return "***" + p[len(p)-4:]
-}
-
-// expandCampaigns picks campaign_leads that are due for a new attempt and creates queued call
-// rows for them. Each created call is then evaluated by the regular dispatcher tick below for
-// eligibility (DNC, hours, cap) — keeping all the gating logic in one place.
-func (w *Worker) expandCampaigns(ctx context.Context) {
-	due, err := w.store.NextDispatchableForCampaign(ctx, 50)
-	if err != nil {
-		w.logger.Warn("worker expand campaigns", "error", err)
-		return
-	}
-	for _, d := range due {
-		// DNC check before we even create the call so we don't poison the calls table.
-		blocked, _ := w.store.IsBlockedPhone(ctx, d.TenantID, d.LeadPhone)
-		if blocked {
-			_ = w.store.SkipCampaignLead(ctx, d.CampaignLeadID, "dnc_blocked")
-			w.logger.Info("expander dnc skip", "campaign", d.CampaignID, "lead", d.LeadID)
-			continue
-		}
-		call, err := w.store.MarkCampaignLeadDispatched(ctx, d)
-		if err != nil {
-			w.logger.Warn("expander mark dispatched", "error", err, "campaign_lead", d.CampaignLeadID)
-			continue
-		}
-		w.logger.Info("expander queued",
-			"campaign", d.CampaignID, "call", call.ID, "phone", redactPhone(d.LeadPhone))
-	}
 }

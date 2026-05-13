@@ -157,6 +157,9 @@ export type Campaign = {
   leadCount: number;
   maxAttempts: number;
   retryCooldownMinutes: number;
+  startAt?: string | null;
+  endAt?: string | null;
+  maxConcurrent: number;
 };
 
 export type CampaignLead = {

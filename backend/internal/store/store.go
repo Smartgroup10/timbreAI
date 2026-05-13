@@ -318,7 +318,8 @@ func (s *Store) AssignBotDID(ctx context.Context, tenantID, botID string, didID 
 
 func (s *Store) ListCampaigns(ctx context.Context, tenantID string) ([]Campaign, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, tenant_id, COALESCE(bot_id, ''), name, status, schedule, lead_count, max_attempts, retry_cooldown_minutes
+		SELECT id, tenant_id, COALESCE(bot_id, ''), name, status, schedule, lead_count,
+		       max_attempts, retry_cooldown_minutes, start_at, end_at, max_concurrent
 		FROM campaigns WHERE tenant_id = $1 ORDER BY created_at DESC`, tenantID)
 	if err != nil {
 		return nil, err
@@ -327,7 +328,8 @@ func (s *Store) ListCampaigns(ctx context.Context, tenantID string) ([]Campaign,
 	out := []Campaign{}
 	for rows.Next() {
 		var c Campaign
-		if err := rows.Scan(&c.ID, &c.TenantID, &c.BotID, &c.Name, &c.Status, &c.Schedule, &c.LeadCount, &c.MaxAttempts, &c.RetryCooldownMinutes); err != nil {
+		if err := rows.Scan(&c.ID, &c.TenantID, &c.BotID, &c.Name, &c.Status, &c.Schedule, &c.LeadCount,
+			&c.MaxAttempts, &c.RetryCooldownMinutes, &c.StartAt, &c.EndAt, &c.MaxConcurrent); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -345,14 +347,19 @@ func (s *Store) CreateCampaign(ctx context.Context, c Campaign) (Campaign, error
 	if c.MaxAttempts == 0 {
 		c.MaxAttempts = 1
 	}
+	if c.MaxConcurrent == 0 {
+		c.MaxConcurrent = 3
+	}
 	var botID any
 	if c.BotID != "" {
 		botID = c.BotID
 	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO campaigns (id, tenant_id, bot_id, name, status, schedule, lead_count, max_attempts)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		c.ID, c.TenantID, botID, c.Name, c.Status, c.Schedule, c.LeadCount, c.MaxAttempts)
+		INSERT INTO campaigns (id, tenant_id, bot_id, name, status, schedule, lead_count,
+		                     max_attempts, start_at, end_at, max_concurrent)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		c.ID, c.TenantID, botID, c.Name, c.Status, c.Schedule, c.LeadCount,
+		c.MaxAttempts, c.StartAt, c.EndAt, c.MaxConcurrent)
 	return c, err
 }
 

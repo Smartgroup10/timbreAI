@@ -91,15 +91,18 @@ type DID struct {
 }
 
 type Campaign struct {
-	ID                   string `json:"id"`
-	TenantID             string `json:"tenantId"`
-	Name                 string `json:"name"`
-	BotID                string `json:"botId"`
-	Status               string `json:"status"`
-	Schedule             string `json:"schedule"`
-	LeadCount            int    `json:"leadCount"`
-	MaxAttempts          int    `json:"maxAttempts"`
-	RetryCooldownMinutes int    `json:"retryCooldownMinutes"`
+	ID                   string     `json:"id"`
+	TenantID             string     `json:"tenantId"`
+	Name                 string     `json:"name"`
+	BotID                string     `json:"botId"`
+	Status               string     `json:"status"`
+	Schedule             string     `json:"schedule"`
+	LeadCount            int        `json:"leadCount"`
+	MaxAttempts          int        `json:"maxAttempts"`
+	RetryCooldownMinutes int        `json:"retryCooldownMinutes"`
+	StartAt              *time.Time `json:"startAt,omitempty"`
+	EndAt                *time.Time `json:"endAt,omitempty"`
+	MaxConcurrent        int        `json:"maxConcurrent"`
 }
 
 type CampaignLead struct {

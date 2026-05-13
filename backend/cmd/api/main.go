@@ -63,12 +63,6 @@ func main() {
 	var ariClient *ari.Client
 	if cfg.ARI.Enabled {
 		ariClient = ari.New(cfg.ARI.URL, cfg.ARI.User, cfg.ARI.Password, cfg.ARI.App, logger)
-		handler := app.MakeARIHandler(st, ariClient, voiceClient, logger)
-		go func() {
-			if err := ariClient.RunEventLoop(rootCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
-				logger.Error("ari loop stopped", "error", err)
-			}
-		}()
 	} else {
 		logger.Info("ari disabled; set ASTERISK_ARI_ENABLED=true to enable originate")
 	}
@@ -91,9 +85,28 @@ func main() {
 		logger.Info("storage disabled; recordings will not persist")
 	}
 
-	// Background worker: scans queued calls and enforces eligibility (DNC, hours, cap).
-	w := worker.New(st, logger, 30*time.Second)
+	// Worker dispatcher: marca campaign_leads como llamables, valida elegibility,
+	// origina llamadas y aplica un semáforo per-campaña (max_concurrent).
+	dialDeps := app.DialDeps{
+		Store:      st,
+		ARI:        ariClient,
+		VoiceAgent: voiceClient,
+		Cfg:        cfg,
+		Logger:     logger,
+	}
+	w := worker.New(dialDeps, 30*time.Second)
 	go w.Run(rootCtx)
+
+	// ARI event loop. El handler libera slots del worker cuando un canal se
+	// destruye (caller cuelga, fail, timeout, etc.).
+	if ariClient != nil {
+		handler := app.MakeARIHandler(st, ariClient, voiceClient, w.ReleaseSlot, logger)
+		go func() {
+			if err := ariClient.RunEventLoop(rootCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Error("ari loop stopped", "error", err)
+			}
+		}()
+	}
 
 	server := api.New(cfg, st, ariClient, voiceClient, storageClient, logger)
 	httpSrv := &http.Server{

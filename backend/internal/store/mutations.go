@@ -203,11 +203,16 @@ func (s *Store) DeleteBot(ctx context.Context, tenantID, id string) error {
 // --- Campaign mutations ---
 
 type CampaignPatch struct {
-	Name        *string
-	BotID       *string
-	Status      *string
-	Schedule    *string
-	MaxAttempts *int
+	Name          *string
+	BotID         *string
+	Status        *string
+	Schedule      *string
+	MaxAttempts   *int
+	StartAt       *time.Time
+	EndAt         *time.Time
+	ClearStartAt  bool
+	ClearEndAt    bool
+	MaxConcurrent *int
 }
 
 func (s *Store) UpdateCampaign(ctx context.Context, tenantID, id string, p CampaignPatch) (Campaign, error) {
@@ -234,6 +239,22 @@ func (s *Store) UpdateCampaign(ctx context.Context, tenantID, id string, p Campa
 	if p.MaxAttempts != nil {
 		args = append(args, *p.MaxAttempts)
 		set = append(set, "max_attempts = $"+itoa(len(args)))
+	}
+	if p.ClearStartAt {
+		set = append(set, "start_at = NULL")
+	} else if p.StartAt != nil {
+		args = append(args, *p.StartAt)
+		set = append(set, "start_at = $"+itoa(len(args)))
+	}
+	if p.ClearEndAt {
+		set = append(set, "end_at = NULL")
+	} else if p.EndAt != nil {
+		args = append(args, *p.EndAt)
+		set = append(set, "end_at = $"+itoa(len(args)))
+	}
+	if p.MaxConcurrent != nil {
+		args = append(args, *p.MaxConcurrent)
+		set = append(set, "max_concurrent = $"+itoa(len(args)))
 	}
 	if len(set) == 0 {
 		return s.getCampaign(ctx, tenantID, id)
@@ -263,9 +284,11 @@ func (s *Store) DeleteCampaign(ctx context.Context, tenantID, id string) error {
 func (s *Store) getCampaign(ctx context.Context, tenantID, id string) (Campaign, error) {
 	var c Campaign
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, tenant_id, COALESCE(bot_id, ''), name, status, schedule, lead_count, max_attempts
+		SELECT id, tenant_id, COALESCE(bot_id, ''), name, status, schedule, lead_count,
+		       max_attempts, retry_cooldown_minutes, start_at, end_at, max_concurrent
 		FROM campaigns WHERE tenant_id = $1 AND id = $2`, tenantID, id).
-		Scan(&c.ID, &c.TenantID, &c.BotID, &c.Name, &c.Status, &c.Schedule, &c.LeadCount, &c.MaxAttempts)
+		Scan(&c.ID, &c.TenantID, &c.BotID, &c.Name, &c.Status, &c.Schedule, &c.LeadCount,
+			&c.MaxAttempts, &c.RetryCooldownMinutes, &c.StartAt, &c.EndAt, &c.MaxConcurrent)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
