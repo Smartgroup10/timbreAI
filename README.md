@@ -163,12 +163,12 @@ Servicios:
 - Backend health: <http://localhost:8080/healthz>
 - Asterisk ARI: <http://localhost:8088/ari>
 
-Credenciales de bootstrap (creadas la primera vez que el backend arranca contra una DB vacia):
+Credenciales de bootstrap (creadas la primera vez que el backend arranca contra una DB vacía):
 
-- `admin@timbre.ai` / `atrium123` (rol `platform_admin`, ve `/admin`)
-- `owner@atrium.local` / `atrium123` (rol `tenant_admin`, scopeado al tenant `atrium`)
+- Email `${BOOTSTRAP_ADMIN_EMAIL}` con password `${BOOTSTRAP_ADMIN_PASSWORD}` (rol `platform_admin`, ve `/admin`)
+- Email `${BOOTSTRAP_TENANT_EMAIL}` con password `${BOOTSTRAP_TENANT_PASSWORD}` (rol `tenant_admin`, scopeado al tenant `${BOOTSTRAP_TENANT_ID}`)
 
-Cambialos via `BOOTSTRAP_*_PASSWORD` en `.env` antes del primer arranque o creando otros usuarios manualmente.
+El backend **se niega a arrancar** si esas passwords no están seteadas con al menos 8 caracteres antes del primer boot. Genéralas con `openssl rand -base64 24`.
 
 ### Solo backend
 
@@ -209,7 +209,7 @@ Para añadir un proveedor real:
 ## Probar una llamada de prueba
 
 1. Levanta el stack con `docker compose up --build`.
-2. Login en `http://localhost:3000` con `owner@atrium.local` / `atrium123`.
+2. Login en `http://localhost:3000` con las credenciales de bootstrap que definiste en `.env`.
 3. Dashboard → **Llamada de prueba** → escribe un numero, opcionalmente elige un bot, lanza.
 4. Si `ASTERISK_ARI_ENABLED=false` (default), la llamada queda en Postgres como `queued` (valida persistencia).
 5. Si `ASTERISK_ARI_ENABLED=true`:

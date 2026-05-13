@@ -132,6 +132,12 @@ func bootstrapUsers(ctx context.Context, st *store.Store, cfg config.Config, log
 	if n > 0 {
 		return nil
 	}
+	// First boot — refuse to create users with empty or insecure passwords. Operator must set
+	// BOOTSTRAP_*_PASSWORD before the first start. This is the only place we'd ever provision
+	// real credentials, so we fail fast instead of seeding well-known defaults.
+	if len(cfg.BootstrapAdmin.Password) < 8 || len(cfg.BootstrapTenant.Password) < 8 {
+		return errors.New("BOOTSTRAP_ADMIN_PASSWORD and BOOTSTRAP_TENANT_PASSWORD must be set (min 8 chars) before first boot")
+	}
 	hash, err := auth.HashPassword(cfg.BootstrapAdmin.Password)
 	if err != nil {
 		return err

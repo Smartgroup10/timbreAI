@@ -90,9 +90,8 @@ export default function LoginPage() {
           </button>
 
           <p className="login-hint subtle">
-            Demo cliente: <code>owner@atrium.local</code> / <code>atrium123</code>
-            <br />
-            Admin de plataforma: <code>admin@timbre.ai</code> / <code>atrium123</code>
+            ¿Primer arranque? Las credenciales bootstrap se configuran via las variables
+            <code>BOOTSTRAP_ADMIN_*</code> y <code>BOOTSTRAP_TENANT_*</code> del backend.
           </p>
         </form>
       </div>

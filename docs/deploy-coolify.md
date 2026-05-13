@@ -64,7 +64,7 @@ prefieren IP fija para identify).
 | `VOICE_AGENT_SHARED_SECRET` | Sin esto, los endpoints internos están abiertos a cualquiera que llegue a la red docker |
 | `STORAGE_SECRET_KEY` | Clave MinIO. Cambia también `STORAGE_ACCESS_KEY` |
 | `POSTGRES_PASSWORD` y `DATABASE_URL` | Default = `change-me` |
-| `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_TENANT_PASSWORD` | Default = `atrium123`. Cámbialos antes del primer arranque |
+| `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_TENANT_PASSWORD` | Sin default. El backend se niega a arrancar si no están seteadas (mín. 8 chars) |
 | `STORAGE_PUBLIC_URL` | Debe ser HTTPS pública (`https://storage.tudominio.com`) para que el navegador pueda reproducir grabaciones |
 | `ALLOWED_ORIGINS` | Lista exacta de orígenes que pueden hacer CORS al backend. En prod: `https://portal.tudominio.com` |
 

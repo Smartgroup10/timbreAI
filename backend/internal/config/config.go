@@ -70,13 +70,13 @@ func Load() (Config, error) {
 		BootstrapAdmin: Credentials{
 			Email:    env("BOOTSTRAP_ADMIN_EMAIL", "admin@timbre.ai"),
 			Name:     env("BOOTSTRAP_ADMIN_NAME", "Platform Admin"),
-			Password: env("BOOTSTRAP_ADMIN_PASSWORD", "atrium123"),
+			Password: env("BOOTSTRAP_ADMIN_PASSWORD", ""),
 			Role:     "platform_admin",
 		},
 		BootstrapTenant: Credentials{
 			Email:    env("BOOTSTRAP_TENANT_EMAIL", "owner@atrium.local"),
 			Name:     env("BOOTSTRAP_TENANT_NAME", "Tenant Owner"),
-			Password: env("BOOTSTRAP_TENANT_PASSWORD", "atrium123"),
+			Password: env("BOOTSTRAP_TENANT_PASSWORD", ""),
 			TenantID: env("BOOTSTRAP_TENANT_ID", "atrium"),
 			Role:     "tenant_admin",
 		},
