@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -40,7 +41,22 @@ func (s *Server) handleAdminCreateTrunk(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "create_failed")
 		return
 	}
+	s.reloadAsteriskRegistrations(r.Context())
 	writeJSON(w, http.StatusCreated, created)
+}
+
+// reloadAsteriskRegistrations fuerza a Asterisk a re-leer ps_registrations. Se
+// llama tras Create/Update/Delete trunk para que el REGISTER al proveedor SIP
+// arranque (o pare) sin tener que reiniciar Asterisk. Si ARI está apagado o el
+// módulo no existe lo logueamos como warn y seguimos — el trunk en BD ya está
+// guardado correctamente, el reload es solo para empujar el cambio en vivo.
+func (s *Server) reloadAsteriskRegistrations(ctx context.Context) {
+	if s.ari == nil {
+		return
+	}
+	if err := s.ari.ReloadModule(ctx, "res_pjsip_outbound_registration"); err != nil {
+		s.logger.Warn("ari reload registrations", "error", err)
+	}
 }
 
 func (s *Server) handleAdminUpdateTrunk(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +79,7 @@ func (s *Server) handleAdminUpdateTrunk(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "update_failed")
 		return
 	}
+	s.reloadAsteriskRegistrations(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -77,6 +94,7 @@ func (s *Server) handleAdminDeleteTrunk(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusConflict, "delete_failed")
 		return
 	}
+	s.reloadAsteriskRegistrations(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
 

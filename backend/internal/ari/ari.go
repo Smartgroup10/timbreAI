@@ -213,6 +213,30 @@ type Endpoint struct {
 	ChannelIDs []string `json:"channel_ids"`
 }
 
+// ReloadModule pide a Asterisk que recargue un módulo concreto (equivalente a
+// "module reload <name>" en la CLI). Lo usamos tras crear/editar un trunk en
+// realtime para forzar a Asterisk a re-leer ps_registrations (las registrations
+// salientes se cachean al startup; los endpoints/auths/aors son lazy-loaded y
+// no necesitan reload).
+func (c *Client) ReloadModule(ctx context.Context, name string) error {
+	u := c.baseURL + "/asterisk/modules/" + url.PathEscape(name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", c.auth())
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ari reload %s: %s: %s", name, resp.Status, string(body))
+	}
+	return nil
+}
+
 // ListEndpoints devuelve los endpoints registrados en Asterisk para una tecnología
 // (típicamente "PJSIP"). Usado por la UI admin para mostrar el estado real del
 // registro contra el proveedor SIP.
