@@ -250,6 +250,25 @@ func (s *Store) ListBots(ctx context.Context, tenantID string) ([]Bot, error) {
 	return out, rows.Err()
 }
 
+// GetBotByID busca un bot sin filtrar por tenant. Para uso de platform_admin
+// (test calls cross-tenant, etc.); los handlers que reciben tenant del JWT
+// deben seguir usando GetBot(ctx, tenantID, id).
+func (s *Store) GetBotByID(ctx context.Context, id string) (Bot, error) {
+	var b Bot
+	err := s.pool.QueryRow(ctx, `
+		SELECT b.id, b.tenant_id, b.name, b.type, b.language, b.voice, b.status, b.objective, b.guardrails,
+		       b.voice_provider, b.did_id, COALESCE(d.e164, ''), COALESCE(d.trunk_id, '')
+		FROM bots b
+		LEFT JOIN dids d ON d.id = b.did_id
+		WHERE b.id = $1`, id).
+		Scan(&b.ID, &b.TenantID, &b.Name, &b.Type, &b.Language, &b.Voice, &b.Status, &b.Objective, &b.Guardrails,
+			&b.VoiceProvider, &b.DIDID, &b.DIDE164, &b.TrunkID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return b, ErrNotFound
+	}
+	return b, err
+}
+
 func (s *Store) GetBot(ctx context.Context, tenantID, id string) (Bot, error) {
 	var b Bot
 	err := s.pool.QueryRow(ctx, `

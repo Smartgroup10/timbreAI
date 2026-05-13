@@ -240,11 +240,6 @@ type testCallRequest struct {
 }
 
 func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
-	tenantID, err := s.tenantScope(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	var req testCallRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
 		writeError(w, http.StatusBadRequest, "invalid_json")
@@ -253,6 +248,40 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 	if req.Phone == "" {
 		writeError(w, http.StatusBadRequest, "phone_required")
 		return
+	}
+
+	// Resolución de tenant: si hay bot, derivamos del bot (necesario para
+	// platform_admin que no tiene tenant en el JWT). Si no hay bot, exigimos
+	// tenant scope del JWT/query — sin bot el test call sale por el sandbox
+	// interno y necesita un tenant explícito para registrar la llamada.
+	var bot store.Bot
+	var tenantID string
+	if req.BotID != "" {
+		b, err := s.store.GetBotByID(r.Context(), req.BotID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeError(w, http.StatusBadRequest, "bot_not_found")
+				return
+			}
+			s.logger.Error("get bot", "error", err)
+			writeError(w, http.StatusInternalServerError, "lookup_failed")
+			return
+		}
+		bot = b
+		tenantID = b.TenantID
+		// Si el caller tiene tenant en el JWT, debe coincidir con el del bot
+		// (un tenant_admin no puede lanzar test call contra un bot ajeno).
+		if claims, ok := auth.FromContext(r.Context()); ok && claims.TenantID != "" && claims.TenantID != tenantID {
+			writeError(w, http.StatusForbidden, "bot_not_in_tenant")
+			return
+		}
+	} else {
+		var err error
+		tenantID, err = s.tenantScope(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	blocked, err := s.store.IsBlockedPhone(r.Context(), tenantID, req.Phone)
@@ -267,20 +296,8 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 	callerID := s.cfg.SIP.CallerID
 	routeNote := "internal_sandbox"
 	var didID, trunkEndpoint string
-	var bot store.Bot
 
 	if req.BotID != "" {
-		var err error
-		bot, err = s.store.GetBot(r.Context(), tenantID, req.BotID)
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				writeError(w, http.StatusBadRequest, "bot_not_found")
-				return
-			}
-			s.logger.Error("get bot", "error", err)
-			writeError(w, http.StatusInternalServerError, "lookup_failed")
-			return
-		}
 		did, err := s.store.LookupDIDForBot(r.Context(), tenantID, req.BotID)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
