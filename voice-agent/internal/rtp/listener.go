@@ -179,6 +179,7 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 	// hacia Asterisk (típicamente: remoteAddr nil → buffer drop).
 	var pktSent, chunksReceived uint64
 	var droppedNoPeer uint64
+	var firstChunkLogged, firstPacketLogged bool
 	statTick := time.NewTicker(5 * time.Second)
 	defer statTick.Stop()
 
@@ -195,6 +196,11 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 		for len(buf) >= frameBytes {
 			l.sendPacket(remote, buf[:frameBytes])
 			pktSent++
+			if !firstPacketLogged {
+				l.logger.Info("rtp first outbound packet", "port", l.port,
+					"remote", remote.String(), "pt", l.payloadType, "bytes", frameBytes)
+				firstPacketLogged = true
+			}
 			buf = buf[frameBytes:]
 		}
 		if now && len(buf) > 0 {
@@ -203,6 +209,11 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 			frame := append(buf, pad...)
 			l.sendPacket(remote, frame)
 			pktSent++
+			if !firstPacketLogged {
+				l.logger.Info("rtp first outbound packet", "port", l.port,
+					"remote", remote.String(), "pt", l.payloadType, "bytes", frameBytes)
+				firstPacketLogged = true
+			}
 			buf = buf[:0]
 		}
 		_ = samplesPerFrame
@@ -223,6 +234,10 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 				return
 			}
 			chunksReceived++
+			if !firstChunkLogged {
+				l.logger.Info("rtp first outbound chunk", "port", l.port, "bytes", len(chunk))
+				firstChunkLogged = true
+			}
 			buf = append(buf, chunk...)
 			flush(false)
 		case <-ticker.C:

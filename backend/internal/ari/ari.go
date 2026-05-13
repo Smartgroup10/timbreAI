@@ -96,10 +96,14 @@ func (c *Client) Originate(ctx context.Context, req OriginateRequest) (Channel, 
 // directions) to ExternalHost. Asterisk picks its own source port; the voice-agent learns it
 // from the first inbound packet.
 type ExternalMediaRequest struct {
-	App          string `json:"app"`
-	ExternalHost string `json:"external_host"`
-	Format       string `json:"format"`
-	ChannelID    string `json:"channelId,omitempty"`
+	App            string `json:"app"`
+	ExternalHost   string `json:"external_host"`
+	Format         string `json:"format"`
+	Encapsulation  string `json:"encapsulation,omitempty"`
+	Transport      string `json:"transport,omitempty"`
+	ConnectionType string `json:"connection_type,omitempty"`
+	Direction      string `json:"direction,omitempty"`
+	ChannelID      string `json:"channelId,omitempty"`
 }
 
 func (c *Client) CreateExternalMedia(ctx context.Context, req ExternalMediaRequest) (Channel, error) {
@@ -108,6 +112,18 @@ func (c *Client) CreateExternalMedia(ctx context.Context, req ExternalMediaReque
 	}
 	if req.Format == "" {
 		req.Format = "slin16"
+	}
+	if req.Encapsulation == "" {
+		req.Encapsulation = "rtp"
+	}
+	if req.Transport == "" {
+		req.Transport = "udp"
+	}
+	if req.ConnectionType == "" {
+		req.ConnectionType = "client"
+	}
+	if req.Direction == "" {
+		req.Direction = "both"
 	}
 	body, err := json.Marshal(req)
 	if err != nil {

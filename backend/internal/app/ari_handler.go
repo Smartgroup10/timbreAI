@@ -104,8 +104,12 @@ func handleStasisStart(
 
 	// 2) Open the External Media channel on Asterisk.
 	emCh, err := ariClient.CreateExternalMedia(ctx, ari.ExternalMediaRequest{
-		ExternalHost: rtp.Host + ":" + itoa(rtp.Port),
-		Format:       "slin16",
+		ExternalHost:   rtp.Host + ":" + itoa(rtp.Port),
+		Format:         "slin16",
+		Encapsulation:  "rtp",
+		Transport:      "udp",
+		ConnectionType: "client",
+		Direction:      "both",
 	})
 	if err != nil {
 		logger.Error("create external media", "error", err)
