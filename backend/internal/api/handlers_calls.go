@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -85,21 +86,18 @@ type internalTranscriptInput struct {
 	Text      string `json:"text"`
 }
 
-// requireInternalSecret guards endpoints that only the voice-agent should call. The voice-agent
-// shares a static secret with the backend (VOICE_AGENT_SHARED_SECRET).
+// requireInternalSecret guards endpoints que solo el voice-agent debe llamar.
+// El secret es obligatorio en config (Load rechaza arrancar sin él), así que
+// aquí simplemente lo comparamos en tiempo constante. SIN fallback "permitir
+// todo si secret==''" — eso era un foot-gun del código original.
 func (s *Server) requireInternalSecret(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.VoiceAgent.Secret == "" {
-			// No secret configured: only allow loopback / private network. In Docker compose this
-			// means only the voice-agent service can reach the backend via its internal name.
-			next(w, r)
-			return
-		}
 		got := r.Header.Get("X-Internal-Secret")
 		if got == "" {
 			got = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		}
-		if got != s.cfg.VoiceAgent.Secret {
+		expected := s.cfg.VoiceAgent.Secret
+		if subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
 			writeError(w, http.StatusUnauthorized, "invalid_secret")
 			return
 		}

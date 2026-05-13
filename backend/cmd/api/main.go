@@ -46,7 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	st := store.New(pool)
+	st := store.New(pool, cfg.SecretsMasterKey)
 
 	if err := bootstrapUsers(rootCtx, st, cfg, logger); err != nil {
 		logger.Error("bootstrap users", "error", err)

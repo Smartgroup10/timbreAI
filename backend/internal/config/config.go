@@ -5,22 +5,25 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"timbre/backend/internal/secretcrypto"
 )
 
 type Config struct {
-	Port            string
-	DatabaseURL     string
-	JWTSecret       string
-	JWTTTL          time.Duration
-	MigrationsDir   string
-	AllowedOrigins  []string
-	BootstrapAdmin  Credentials
-	BootstrapTenant Credentials
+	Port             string
+	DatabaseURL      string
+	JWTSecret        string
+	JWTTTL           time.Duration
+	MigrationsDir    string
+	AllowedOrigins   []string
+	BootstrapAdmin   Credentials
+	BootstrapTenant  Credentials
+	SecretsMasterKey []byte // 32B AES-256 key tras decodificar base64
 
-	ARI          ARIConfig
-	SIP          SIPConfig
-	VoiceAgent   VoiceAgentConfig
-	Storage      StorageConfig
+	ARI        ARIConfig
+	SIP        SIPConfig
+	VoiceAgent VoiceAgentConfig
+	Storage    StorageConfig
 }
 
 type StorageConfig struct {
@@ -112,6 +115,14 @@ func Load() (Config, error) {
 	if cfg.JWTSecret == "" || cfg.JWTSecret == "change-me" {
 		return cfg, errors.New("JWT_SECRET must be set to a non-default value")
 	}
+	if cfg.VoiceAgent.Secret == "" {
+		return cfg, errors.New("VOICE_AGENT_SHARED_SECRET is required (auth between backend ↔ voice-agent)")
+	}
+	masterKey, err := secretcrypto.DecodeKey(env("SECRETS_MASTER_KEY", ""))
+	if err != nil {
+		return cfg, err
+	}
+	cfg.SecretsMasterKey = masterKey
 	return cfg, nil
 }
 

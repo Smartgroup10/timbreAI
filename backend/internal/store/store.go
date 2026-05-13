@@ -17,11 +17,14 @@ var (
 )
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool       *pgxpool.Pool
+	secretsKey []byte // master key para cifrar API keys de proveedores de voz (AES-256-GCM)
 }
 
-func New(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool}
+// New construye un Store. secretsKey debe ser de 32 bytes (AES-256) — viene de
+// config.SecretsMasterKey. Si es nil/<32B los métodos que cifran fallarán.
+func New(pool *pgxpool.Pool, secretsKey []byte) *Store {
+	return &Store{pool: pool, secretsKey: secretsKey}
 }
 
 // --- Tenants ---
