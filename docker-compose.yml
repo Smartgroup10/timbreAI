@@ -129,11 +129,14 @@ services:
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:3000"]
+      # Usamos node directamente — wget --spider en busybox es inconsistente
+      # con respuestas 3xx (Next redirige / a /login) y a veces marca unhealthy
+      # un servicio sano. Coolify/Traefik no rutea a unhealthy → "no available server".
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 30s
 
   asterisk:
     build:
