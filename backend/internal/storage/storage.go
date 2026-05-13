@@ -119,13 +119,19 @@ func (c *Client) PutObject(ctx context.Context, key string, body []byte, content
 	return base + "/" + c.Bucket + "/" + key, nil
 }
 
-// PresignGet returns a presigned URL that can be opened in a browser without auth. The URL is
-// generated against PublicURL (so it works from a developer's host machine even when the backend
-// is inside Docker).
+// PresignGet returns a presigned URL that can be opened in a browser without auth.
+//
+// Si PublicURL está definida (dev local o S3 público externo) se genera una URL
+// absoluta contra ese host. Si NO está definida, se devuelve una URL relativa
+// "/storage/{bucket}/{key}?…" pensada para que el frontend Next la proxee a
+// MinIO interno (ver frontend/next.config.mjs). En ese caso la firma se calcula
+// contra el host del Endpoint interno (minio:9000) — que es lo que verá MinIO
+// cuando Next reenvíe la petición preservando query y headers.
 func (c *Client) PresignGet(key string, ttl time.Duration) (string, error) {
 	if !c.Enabled() {
 		return "", errors.New("storage_not_configured")
 	}
+	relative := c.PublicURL == ""
 	base := c.PublicURL
 	if base == "" {
 		base = c.Endpoint
@@ -153,6 +159,10 @@ func (c *Client) PresignGet(key string, ttl time.Duration) (string, error) {
 
 	q.Set("X-Amz-Signature", signature)
 	u.RawQuery = encodeQuery(q)
+	if relative {
+		// "/storage" + "/<bucket>/<key>" + "?<query>"
+		return "/storage" + u.Path + "?" + u.RawQuery, nil
+	}
 	return u.String(), nil
 }
 

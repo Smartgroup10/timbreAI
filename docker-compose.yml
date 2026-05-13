@@ -73,7 +73,9 @@ services:
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-timbre}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-timbre-recordings}
-      STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL}
+      # Vacío = URLs relativas "/storage/...". El frontend Next reenvía a minio.
+      # Solo seteado si usas S3 externo o quieres exponer minio en un dominio.
+      STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,11 +118,12 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      # Reverse proxy server-side (Next rewrites). Solo el frontend tiene
+      # dominio público; backend y minio quedan en la red interna.
+      BACKEND_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
+      MINIO_URL: ${MINIO_INTERNAL_URL:-http://minio:9000}
     depends_on:
       - backend
     expose:

@@ -1,8 +1,9 @@
 # Despliegue en Coolify
 
-timbre.ai se despliega como una sola aplicación Docker Compose con 7 servicios. Coolify se encarga
-de Traefik (TLS + routing por hostname) para los servicios HTTP; los puertos SIP/RTP (UDP) se
-exponen directamente al host.
+timbre.ai se despliega como una sola aplicación Docker Compose con 7 servicios. **Solo el
+`frontend` tiene dominio público** — el resto vive en la red Docker interna. El Next.js del
+frontend hace de reverse proxy: `/api/*` se reenvía al backend y `/storage/*` a MinIO sin pasar
+por Traefik.
 
 ## Topología en producción
 
@@ -10,16 +11,19 @@ exponen directamente al host.
                           ┌────────────────────────┐
                           │ Traefik (Coolify)      │
                           │ portal.tudominio.com   │
-                          │ api.tudominio.com      │
-                          │ voice.tudominio.com    │
-                          │ storage.tudominio.com  │
                           └────────────┬───────────┘
                                        │ HTTPS
-       ┌───────────────┬───────────────┼───────────────┬────────────────┐
-       ▼               ▼               ▼               ▼                ▼
-   frontend        backend        voice-agent       minio           (interno)
-   :3000           :8080          :8090             :9000           postgres, redis
-                                                                    asterisk
+                                       ▼
+                                  ┌─────────┐
+                                  │ frontend│  Next.js (reverse proxy)
+                                  │  :3000  │
+                                  └────┬────┘
+                                       │  Docker network (interno, sin TLS)
+              ┌────────────────────────┼────────────────────────┐
+              ▼                        ▼                        ▼
+        backend :8080            minio :9000             (resto interno)
+        + voice-agent :8090                              postgres, redis,
+                                                         asterisk :8088
                                   ┌────────────────────────────────────┐
                                   │ UDP directo al host (no via Traefik)│
                                   ├────────────────────────────────────┤
@@ -28,6 +32,11 @@ exponen directamente al host.
                                   │ voice-agent 12000-12099/udp (RTP)  │
                                   └────────────────────────────────────┘
 ```
+
+**Ventajas**:
+- Una sola URL pública → un solo certificado, sin CORS, sin `NEXT_PUBLIC_API_URL` bakeada.
+- Backend, voice-agent y MinIO inalcanzables desde internet (defensa en profundidad).
+- Rotar el dominio no requiere rebuild del frontend.
 
 ## Recursos mínimos
 
@@ -45,11 +54,9 @@ prefieren IP fija para identify).
 3. **Build pack**: Docker Compose
 4. **Compose file**: `docker-compose.yml`
 5. **Environment variables**: pega el bloque de la sección "Variables clave" del [README](../README.md#variables-clave-para-coolify)
-6. **Domains**: añade los 4 hostnames y mapéalos a sus servicios
-   - `FRONTEND_HOST` → `frontend`
-   - `BACKEND_HOST` → `backend`
-   - `VOICE_AGENT_HOST` → `voice-agent`
-   - `MINIO_HOST` → `minio`
+6. **Domains**: asigna un único hostname al servicio `frontend` (ej.
+   `portal.tudominio.com`). NO asignes dominio a `backend`, `voice-agent` ni `minio` — el
+   frontend Next los proxea por la red interna.
 7. **Open ports** en la sección de network del nodo Coolify:
    - 5060/udp (SIP, solo si vas a recibir llamadas inbound)
    - 10000-10020/udp (RTP del proveedor SIP)
@@ -65,8 +72,8 @@ prefieren IP fija para identify).
 | `STORAGE_SECRET_KEY` | Clave MinIO. Cambia también `STORAGE_ACCESS_KEY` |
 | `POSTGRES_PASSWORD` y `DATABASE_URL` | Default = `change-me` |
 | `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_TENANT_PASSWORD` | Sin default. El backend se niega a arrancar si no están seteadas (mín. 8 chars) |
-| `STORAGE_PUBLIC_URL` | Debe ser HTTPS pública (`https://storage.tudominio.com`) para que el navegador pueda reproducir grabaciones |
-| `ALLOWED_ORIGINS` | Lista exacta de orígenes que pueden hacer CORS al backend. En prod: `https://portal.tudominio.com` |
+| `STORAGE_PUBLIC_URL` | Deja **vacío** salvo que uses S3 externo o un dominio dedicado para grabaciones. Vacío = el backend devuelve `/storage/...` y Next lo proxea. |
+| `ALLOWED_ORIGINS` | Puede quedar **vacío** en prod (single-domain = same-origin, sin CORS). Solo si pruebas el backend desde otro host. |
 
 ## Voice agent y proveedores
 
@@ -126,11 +133,12 @@ curso, hay que duplicar la instancia y orquestar el drenaje — fuera del MVP.
 ## Primer test post-deploy
 
 ```bash
-curl https://api.tudominio.com/healthz
+# Healthz va a través del frontend (Next reescribe a backend)
+curl https://portal.tudominio.com/healthz
 # {"ariEnabled":true,"status":"ok","time":"...","version":"0.1.0"}
 
 # Login
-curl -X POST https://api.tudominio.com/api/auth/login \
+curl -X POST https://portal.tudominio.com/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"admin@timbre.ai","password":"<el que pusiste>"}'
 ```

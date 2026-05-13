@@ -1,6 +1,8 @@
 "use client";
 
-export const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+// Same-origin: el browser llama a /api/* del propio portal y Next reenvía al
+// backend por la red Docker (ver frontend/next.config.mjs).
+export const baseUrl = "";
 
 export type Overview = {
   callsToday: number;
