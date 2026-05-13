@@ -139,7 +139,13 @@ services:
       ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-timbre}
       ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
     volumes:
-      - ./asterisk/etc/asterisk:/etc/asterisk:ro
+      # Montamos archivos individuales (no el dir entero) para no pisar los
+      # defaults de la imagen (asterisk.conf, modules.conf, logger.conf, etc.)
+      - ./asterisk/etc/asterisk/ari.conf:/etc/asterisk/ari.conf:ro
+      - ./asterisk/etc/asterisk/http.conf:/etc/asterisk/http.conf:ro
+      - ./asterisk/etc/asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./asterisk/etc/asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/etc/asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
       - asterisk_spool:/var/spool/asterisk
       - asterisk_logs:/var/log/asterisk
     expose:
