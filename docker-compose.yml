@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-atrium_calls}
+      POSTGRES_USER: ${POSTGRES_USER:-atrium}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atrium} -d ${POSTGRES_DB:-atrium_calls}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      PORT: ${BACKEND_PORT:-8080}
+      DATABASE_URL: ${DATABASE_URL:-postgres://atrium:change-me@postgres:5432/atrium_calls?sslmode=disable}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ASTERISK_ARI_URL: http://asterisk:8088/ari
+      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-atrium}
+      ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+  asterisk:
+    build:
+      context: ./asterisk
+    restart: unless-stopped
+    environment:
+      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-atrium}
+      ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
+    volumes:
+      - ./asterisk/etc/asterisk:/etc/asterisk:ro
+      - asterisk_spool:/var/spool/asterisk
+      - asterisk_logs:/var/log/asterisk
+    ports:
+      - "${ASTERISK_HTTP_PORT:-8088}:8088"
+      - "${ASTERISK_SIP_PORT:-5060}:5060/udp"
+      - "${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10020}:10000-10020/udp"
+
+volumes:
+  postgres_data:
+  redis_data:
+  asterisk_spool:
+  asterisk_logs:
+

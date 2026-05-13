@@ -1,0 +1,13 @@
+.env
+.env.local
+.DS_Store
+node_modules/
+.next/
+dist/
+build/
+coverage/
+*.log
+tmp/
+data/
+bin/
+.gocache/
