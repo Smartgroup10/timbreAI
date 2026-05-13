@@ -17,7 +17,9 @@ export default function TrunksPage() {
   const tenants = useResource(() => api.tenants(), []);
   const [tab, setTab] = useState<Tab>("trunks");
   const [trunkFormOpen, setTrunkFormOpen] = useState(false);
+  const [editingTrunk, setEditingTrunk] = useState<SIPTrunk | null>(null);
   const [didFormOpen, setDidFormOpen] = useState(false);
+  const [editingDid, setEditingDid] = useState<DID | null>(null);
   const [sipState, setSipState] = useState<Record<string, EndpointState>>({});
   const [ariEnabled, setAriEnabled] = useState<boolean | null>(null);
   const toast = useToast();
@@ -58,14 +60,28 @@ export default function TrunksPage() {
     dids.reload();
   }
 
-  async function handleCreateTrunk(input: Partial<SIPTrunk>) {
+  function openTrunkForm(editing?: SIPTrunk) {
+    setEditingTrunk(editing ?? null);
+    setTrunkFormOpen(true);
+  }
+  function closeTrunkForm() {
+    setTrunkFormOpen(false);
+    setEditingTrunk(null);
+  }
+
+  async function handleSaveTrunk(input: Partial<SIPTrunk>) {
     try {
-      await api.adminCreateTrunk(input);
-      toast.push("Trunk creado", "success");
-      setTrunkFormOpen(false);
+      if (editingTrunk) {
+        await api.adminUpdateTrunk(editingTrunk.id, input);
+        toast.push("Trunk actualizado", "success");
+      } else {
+        await api.adminCreateTrunk(input);
+        toast.push("Trunk creado", "success");
+      }
+      closeTrunkForm();
       reloadAll();
     } catch (err) {
-      toast.push(`No se pudo crear: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(`No se pudo guardar: ${err instanceof ApiError ? err.code : "error"}`, "danger");
     }
   }
 
@@ -80,14 +96,32 @@ export default function TrunksPage() {
     }
   }
 
-  async function handleCreateDID(input: Parameters<typeof api.adminCreateDID>[0]) {
+  function openDidForm(editing?: DID) {
+    setEditingDid(editing ?? null);
+    setDidFormOpen(true);
+  }
+  function closeDidForm() {
+    setDidFormOpen(false);
+    setEditingDid(null);
+  }
+
+  async function handleSaveDID(input: Parameters<typeof api.adminCreateDID>[0]) {
     try {
-      await api.adminCreateDID(input);
-      toast.push("DID añadido", "success");
-      setDidFormOpen(false);
+      if (editingDid) {
+        await api.adminUpdateDID(editingDid.id, {
+          e164: input.e164,
+          label: input.label,
+          status: input.status,
+        });
+        toast.push("DID actualizado", "success");
+      } else {
+        await api.adminCreateDID(input);
+        toast.push("DID añadido", "success");
+      }
+      closeDidForm();
       reloadAll();
     } catch (err) {
-      toast.push(`No se pudo crear: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(`No se pudo guardar: ${err instanceof ApiError ? err.code : "error"}`, "danger");
     }
   }
 
@@ -129,11 +163,11 @@ export default function TrunksPage() {
         </div>
         <div className="actions">
           {tab === "trunks" ? (
-            <button className="button" onClick={() => setTrunkFormOpen((v) => !v)}>
+            <button className="button" onClick={() => (trunkFormOpen ? closeTrunkForm() : openTrunkForm())}>
               {trunkFormOpen ? "Cancelar" : "Nuevo trunk"}
             </button>
           ) : (
-            <button className="button" onClick={() => setDidFormOpen((v) => !v)}>
+            <button className="button" onClick={() => (didFormOpen ? closeDidForm() : openDidForm())}>
               {didFormOpen ? "Cancelar" : "Añadir DID"}
             </button>
           )}
@@ -151,7 +185,7 @@ export default function TrunksPage() {
 
       {tab === "trunks" ? (
         <>
-          {trunkFormOpen ? <TrunkForm onSubmit={handleCreateTrunk} /> : null}
+          {trunkFormOpen ? <TrunkForm initial={editingTrunk ?? undefined} onSubmit={handleSaveTrunk} onCancel={closeTrunkForm} /> : null}
 
           <div className="panel" style={{ marginBottom: 16 }}>
             <p className="subtle" style={{ marginBottom: 0 }}>
@@ -209,7 +243,14 @@ export default function TrunksPage() {
                         </td>
                         <td>{trunk.didCount}</td>
                         <td>
-                          <button className="button ghost compact" onClick={() => handleDeleteTrunk(trunk.id)}>
+                          <button className="button ghost compact" onClick={() => openTrunkForm(trunk)}>
+                            Editar
+                          </button>
+                          <button
+                            className="button ghost compact"
+                            style={{ marginLeft: 6 }}
+                            onClick={() => handleDeleteTrunk(trunk.id)}
+                          >
                             Eliminar
                           </button>
                         </td>
@@ -223,7 +264,15 @@ export default function TrunksPage() {
         </>
       ) : (
         <>
-          {didFormOpen ? <DIDForm trunks={trunksData} tenants={tenantsData} onSubmit={handleCreateDID} /> : null}
+          {didFormOpen ? (
+            <DIDForm
+              initial={editingDid ?? undefined}
+              trunks={trunksData}
+              tenants={tenantsData}
+              onSubmit={handleSaveDID}
+              onCancel={closeDidForm}
+            />
+          ) : null}
 
           <div className="table-wrap">
             {dids.loading ? (
@@ -249,6 +298,7 @@ export default function TrunksPage() {
                       did={did}
                       tenants={tenantsData}
                       onAssign={(tenantId) => handleAssignDID(did.id, tenantId)}
+                      onEdit={() => openDidForm(did)}
                       onDelete={() => handleDeleteDID(did.id)}
                     />
                   ))}
@@ -262,17 +312,28 @@ export default function TrunksPage() {
   );
 }
 
-function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [provider, setProvider] = useState("twilio");
-  const [asteriskEndpoint, setAsteriskEndpoint] = useState("");
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState(5060);
-  const [username, setUsername] = useState("");
+function TrunkForm({
+  initial,
+  onSubmit,
+  onCancel,
+}: {
+  initial?: SIPTrunk;
+  onSubmit: (input: Partial<SIPTrunk>) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const editing = Boolean(initial);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [provider, setProvider] = useState(initial?.provider || "twilio");
+  const [asteriskEndpoint, setAsteriskEndpoint] = useState(initial?.asteriskEndpoint ?? "");
+  const [host, setHost] = useState(initial?.host ?? "");
+  const [port, setPort] = useState(initial?.port ?? 5060);
+  const [username, setUsername] = useState(initial?.username ?? "");
+  // Al editar, el backend nos devuelve "********" como password. Dejamos el
+  // campo vacío y un placeholder claro: si no se rellena, conservamos el actual.
   const [password, setPassword] = useState("");
-  const [register, setRegister] = useState(true);
-  const [identifyIp, setIdentifyIp] = useState("");
-  const [notes, setNotes] = useState("");
+  const [register, setRegister] = useState(initial ? initial.register : true);
+  const [identifyIp, setIdentifyIp] = useState(initial?.identifyIp ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   return (
@@ -300,8 +361,8 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
     >
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Nuevo trunk</p>
-          <h2>Conectar proveedor SIP</h2>
+          <p className="eyebrow">{editing ? "Editar trunk" : "Nuevo trunk"}</p>
+          <h2>{editing ? `${initial?.name}` : "Conectar proveedor SIP"}</h2>
         </div>
       </div>
       <div className="form-grid">
@@ -342,7 +403,12 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
         </div>
         <div className="field">
           <label>Contraseña SIP</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={editing ? "Dejar vacío = conservar la actual" : "••••••••"}
+          />
         </div>
         <div className="field">
           <label>Modo de autenticación</label>
@@ -365,9 +431,12 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </div>
       </div>
-      <div className="actions" style={{ marginTop: 12 }}>
+      <div className="actions" style={{ marginTop: 12, gap: 8 }}>
+        <button type="button" className="button ghost" onClick={onCancel} disabled={submitting}>
+          Cancelar
+        </button>
         <button className="button" disabled={submitting}>
-          {submitting ? "Guardando…" : "Crear trunk"}
+          {submitting ? "Guardando…" : editing ? "Guardar cambios" : "Crear trunk"}
         </button>
       </div>
     </form>
@@ -375,18 +444,24 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
 }
 
 function DIDForm({
+  initial,
   trunks,
   tenants,
   onSubmit,
+  onCancel,
 }: {
+  initial?: DID;
   trunks: SIPTrunk[];
   tenants: Tenant[];
   onSubmit: (input: Parameters<typeof api.adminCreateDID>[0]) => Promise<void>;
+  onCancel: () => void;
 }) {
-  const [trunkId, setTrunkId] = useState(trunks[0]?.id ?? "");
-  const [e164, setE164] = useState("");
-  const [label, setLabel] = useState("");
-  const [tenantId, setTenantId] = useState("");
+  const editing = Boolean(initial);
+  const [trunkId, setTrunkId] = useState(initial?.trunkId ?? trunks[0]?.id ?? "");
+  const [e164, setE164] = useState(initial?.e164 ?? "");
+  const [label, setLabel] = useState(initial?.label ?? "");
+  const [tenantId, setTenantId] = useState(initial?.tenantId ?? "");
+  const [status, setStatus] = useState(initial?.status ?? "active");
   const [submitting, setSubmitting] = useState(false);
 
   if (trunks.length === 0) {
@@ -408,6 +483,7 @@ function DIDForm({
           trunkId,
           e164,
           label,
+          status,
           tenantId: tenantId || null,
         });
         setSubmitting(false);
@@ -415,8 +491,8 @@ function DIDForm({
     >
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Nuevo DID</p>
-          <h2>Añadir numero</h2>
+          <p className="eyebrow">{editing ? "Editar DID" : "Nuevo DID"}</p>
+          <h2>{editing ? initial?.e164 : "Añadir numero"}</h2>
         </div>
       </div>
       <div className="form-grid">
@@ -430,17 +506,22 @@ function DIDForm({
         </div>
         <div className="field">
           <label>Trunk</label>
-          <select value={trunkId} onChange={(e) => setTrunkId(e.target.value)} required>
+          <select value={trunkId} onChange={(e) => setTrunkId(e.target.value)} required disabled={editing}>
             {trunks.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} ({t.asteriskEndpoint})
               </option>
             ))}
           </select>
+          {editing ? (
+            <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
+              El trunk no se puede cambiar tras crear el DID.
+            </p>
+          ) : null}
         </div>
         <div className="field">
           <label>Asignar a tenant (opcional)</label>
-          <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+          <select value={tenantId ?? ""} onChange={(e) => setTenantId(e.target.value)} disabled={editing}>
             <option value="">— Sin asignar (pool) —</option>
             {tenants.map((t) => (
               <option key={t.id} value={t.id}>
@@ -448,11 +529,26 @@ function DIDForm({
               </option>
             ))}
           </select>
+          {editing ? (
+            <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
+              Asigna desde el selector de la fila.
+            </p>
+          ) : null}
+        </div>
+        <div className="field">
+          <label>Estado</label>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="active">Activo</option>
+            <option value="disabled">Deshabilitado</option>
+          </select>
         </div>
       </div>
-      <div className="actions" style={{ marginTop: 12 }}>
+      <div className="actions" style={{ marginTop: 12, gap: 8 }}>
+        <button type="button" className="button ghost" onClick={onCancel} disabled={submitting}>
+          Cancelar
+        </button>
         <button className="button" disabled={submitting}>
-          {submitting ? "Guardando…" : "Añadir DID"}
+          {submitting ? "Guardando…" : editing ? "Guardar cambios" : "Añadir DID"}
         </button>
       </div>
     </form>
@@ -476,11 +572,13 @@ function DIDRow({
   did,
   tenants,
   onAssign,
+  onEdit,
   onDelete,
 }: {
   did: DID;
   tenants: Tenant[];
   onAssign: (tenantId: string | null) => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -510,7 +608,10 @@ function DIDRow({
         <span className={statusClass(did.status)}>{did.status}</span>
       </td>
       <td>
-        <button className="button ghost compact" onClick={onDelete}>
+        <button className="button ghost compact" onClick={onEdit}>
+          Editar
+        </button>
+        <button className="button ghost compact" style={{ marginLeft: 6 }} onClick={onDelete}>
           Eliminar
         </button>
       </td>

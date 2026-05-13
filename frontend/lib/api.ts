@@ -426,6 +426,8 @@ export const api = {
     request<DID[]>("GET", tenantFilter ? `/api/admin/dids?tenant=${encodeURIComponent(tenantFilter)}` : "/api/admin/dids"),
   adminCreateDID: (input: { trunkId: string; e164: string; label?: string; tenantId?: string | null; status?: string }) =>
     request<DID>("POST", "/api/admin/dids", input),
+  adminUpdateDID: (id: string, input: { e164: string; label?: string; status?: string }) =>
+    request<void>("PATCH", `/api/admin/dids/${encodeURIComponent(id)}`, input),
   adminAssignDID: (id: string, tenantId: string | null) =>
     request<void>("PATCH", `/api/admin/dids/${encodeURIComponent(id)}/assign`, { tenantId }),
   adminDeleteDID: (id: string) => request<void>("DELETE", `/api/admin/dids/${encodeURIComponent(id)}`),

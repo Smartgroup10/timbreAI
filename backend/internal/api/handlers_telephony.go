@@ -164,6 +164,44 @@ func (s *Server) handleAdminCreateDID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, created)
 }
 
+type adminUpdateDIDInput struct {
+	E164   string `json:"e164"`
+	Label  string `json:"label"`
+	Status string `json:"status"`
+}
+
+func (s *Server) handleAdminUpdateDID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "id_required")
+		return
+	}
+	var input adminUpdateDIDInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	input.E164 = strings.TrimSpace(input.E164)
+	if input.E164 == "" {
+		writeError(w, http.StatusBadRequest, "e164_required")
+		return
+	}
+	if err := s.store.UpdateDID(r.Context(), store.DID{
+		ID:     id,
+		E164:   input.E164,
+		Label:  input.Label,
+		Status: input.Status,
+	}); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "did_not_found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "update_failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type adminAssignDIDInput struct {
 	TenantID *string `json:"tenantId"`
 }

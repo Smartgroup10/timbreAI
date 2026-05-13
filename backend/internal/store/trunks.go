@@ -121,8 +121,11 @@ func (s *Store) UpdateTrunk(ctx context.Context, t SIPTrunk) error {
 	defer tx.Rollback(ctx)
 
 	// Si el frontend manda el password enmascarado, mantenemos el actual.
-	var currentPassword string
-	if err := tx.QueryRow(ctx, `SELECT sip_password FROM sip_trunks WHERE id = $1`, t.ID).Scan(&currentPassword); err != nil {
+	// También guardamos el endpoint ANTIGUO: si el operador lo renombra hay
+	// que borrar las filas ps_* del nombre viejo, no del nuevo.
+	var currentPassword, oldEndpoint string
+	if err := tx.QueryRow(ctx, `SELECT sip_password, asterisk_endpoint FROM sip_trunks WHERE id = $1`, t.ID).
+		Scan(&currentPassword, &oldEndpoint); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -146,9 +149,10 @@ func (s *Store) UpdateTrunk(ctx context.Context, t SIPTrunk) error {
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	// Borramos y recreamos las filas ps_*. Es más simple que UPDATE selectivo
-	// y como Asterisk lee on-demand no hay race observable.
-	if err := deleteRealtimeTrunk(ctx, tx, t.AsteriskEndpoint); err != nil {
+	// Borramos las ps_* del endpoint ANTIGUO y reinsertamos con el actual.
+	// Es más simple que un UPDATE selectivo y como Asterisk lee on-demand
+	// no hay race observable.
+	if err := deleteRealtimeTrunk(ctx, tx, oldEndpoint); err != nil {
 		return err
 	}
 	if err := upsertRealtimeTrunk(ctx, tx, t); err != nil {

@@ -119,6 +119,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/admin/trunks/{id}", s.requireRole("platform_admin", s.handleAdminDeleteTrunk))
 	mux.HandleFunc("GET /api/admin/dids", s.requireRole("platform_admin", s.handleAdminListDIDs))
 	mux.HandleFunc("POST /api/admin/dids", s.requireRole("platform_admin", s.handleAdminCreateDID))
+	mux.HandleFunc("PATCH /api/admin/dids/{id}", s.requireRole("platform_admin", s.handleAdminUpdateDID))
 	mux.HandleFunc("PATCH /api/admin/dids/{id}/assign", s.requireRole("platform_admin", s.handleAdminAssignDID))
 	mux.HandleFunc("DELETE /api/admin/dids/{id}", s.requireRole("platform_admin", s.handleAdminDeleteDID))
 
