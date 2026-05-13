@@ -216,83 +216,84 @@ Para añadir un proveedor real:
    - Sin bot: hace `Originate` a `PJSIP/6001` (registra un softphone tipo Zoiper en `localhost:5060` user `6001` pass `change-me` para contestar).
    - Con bot que tiene DID asignado: hace `Originate` a `PJSIP/{phone}@{trunkEndpoint}` con el DID como caller-id.
 
-## Despliegue (Coolify + Traefik)
+## Despliegue (Coolify)
 
-El repo está preparado para deployarse en Coolify detrás de Traefik. La configuración usa labels condicionales (`TRAEFIK_ENABLE=true`) para no estorbar al desarrollo local.
+El compose **no** tiene Traefik labels ni hostnames hardcodeados. Coolify se encarga del routing automáticamente cuando le pones un dominio a cada servicio en su panel. Esto mantiene el repo agnóstico al dominio donde lo despliegues.
 
-### Servicios públicos (vía Traefik)
+### Servicios públicos (rutea Coolify)
 
-| Servicio | Host por defecto | Puerto interno | Propósito |
-|---|---|---|---|
-| `frontend` | `${FRONTEND_HOST}` | 3000 | Portal Next.js |
-| `backend` | `${BACKEND_HOST}` | 8080 | API REST/JSON |
-| `voice-agent` | `${VOICE_AGENT_HOST}` | 8090 | HTTP + WebSocket de sesiones |
-| `minio` | `${MINIO_HOST}` | 9000 | Recordings (presigned URLs públicas) |
-
-Traefik termina TLS, hace HTTP↔HTTPS y emite certs Let's Encrypt automáticamente cuando Coolify lo gestiona.
+| Servicio | Puerto interno | Propósito |
+|---|---|---|
+| `frontend` | 3000 | Portal Next.js |
+| `backend` | 8080 | API REST/JSON |
+| `voice-agent` | 8090 | HTTP + WebSocket de sesiones |
+| `minio` | 9000 | Recordings (presigned URLs públicas) |
 
 ### Servicios internos (no expuestos)
 
-- `postgres` — datos
-- `redis` — colas/futuro
-- `asterisk` — PBX (puertos UDP directos al host, **no** detrás de Traefik porque SIP/RTP son UDP)
+- `postgres`, `redis` — datos
+- `asterisk` — PBX (puertos UDP directos al host, no via HTTP proxy)
 
-### Puertos UDP directos
+### Puertos UDP directos al host
 
-Traefik no proxea UDP. Asterisk y el voice-agent abren puertos UDP directos al host:
+Traefik/Coolify no proxean UDP. El compose mapea los siguientes puertos al host directamente:
 
 | Servicio | Puertos UDP | Para qué |
 |---|---|---|
-| asterisk | 5060 | SIP signaling |
+| asterisk | 5060 | SIP signaling (solo si recibes inbound) |
 | asterisk | 10000-10020 | RTP audio del proveedor SIP |
 | voice-agent | 12000-12099 | RTP audio del External Media de Asterisk |
 
-En Coolify abre estos rangos en el firewall del nodo.
+Abre esos rangos en el firewall del nodo Coolify.
 
-### Variables clave para Coolify
+### Variables que SÍ debes poner en Coolify
 
 ```bash
-# Habilita los Traefik labels
-TRAEFIK_ENABLE=true
+# DB
+POSTGRES_PASSWORD=tu-password-fuerte
+DATABASE_URL=postgres://atrium:tu-password-fuerte@postgres:5432/atrium_calls?sslmode=disable
 
-# Hosts públicos
-FRONTEND_HOST=portal.tudominio.com
-BACKEND_HOST=api.tudominio.com
-VOICE_AGENT_HOST=voice.tudominio.com
-MINIO_HOST=storage.tudominio.com
-
-# Builds: el frontend bakea NEXT_PUBLIC_API_URL en build time
-NEXT_PUBLIC_API_URL=https://api.tudominio.com
-
-# CORS del backend debe coincidir con el host del frontend
-ALLOWED_ORIGINS=https://portal.tudominio.com
-
-# Storage público accesible (URL que verá el navegador)
-STORAGE_PUBLIC_URL=https://storage.tudominio.com
-
-# Hostname/IP que Asterisk usa para llegar al voice-agent (RTP)
-# Si Asterisk corre en el mismo node, "voice-agent" funciona (nombre del servicio).
-# Si Asterisk corre fuera, usa la IP pública del nodo.
-RTP_ADVERTISE_HOST=voice-agent
-
-# Producción: generar secretos largos
+# Auth
 JWT_SECRET=$(openssl rand -base64 48)
 VOICE_AGENT_SHARED_SECRET=$(openssl rand -base64 32)
-STORAGE_SECRET_KEY=$(openssl rand -base64 32)
+BOOTSTRAP_ADMIN_EMAIL=tu-email@dominio.com
 BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -base64 24)
 BOOTSTRAP_TENANT_PASSWORD=$(openssl rand -base64 24)
+
+# URLs públicas — frontend bakea esto en build time
+NEXT_PUBLIC_API_URL=https://api.tudominio.com
+ALLOWED_ORIGINS=https://tudominio.com
+STORAGE_PUBLIC_URL=https://storage.tudominio.com
+
+# Asterisk
+ASTERISK_ARI_ENABLED=true
+ASTERISK_ARI_PASSWORD=$(openssl rand -base64 24)
+
+# Storage
+STORAGE_SECRET_KEY=$(openssl rand -base64 32)
+
+# RTP hostname que Asterisk usa para enviar audio al voice-agent.
+# Si todo corre en el mismo nodo, "voice-agent" funciona.
+RTP_ADVERTISE_HOST=voice-agent
 ```
+
+> **Las API keys de OpenAI / Deepgram / AssemblyAI NO van aquí**. Se configuran por tenant desde `/portal/settings` y se guardan en la tabla `tenant_voice_credentials` de Postgres.
 
 ### Pasos en Coolify
 
-1. **Nueva aplicación** → Source: Git repository → URL: `https://github.com/Smartgroup10/timbreAI`
-2. **Build pack**: Docker Compose
-3. **Compose file**: `docker-compose.yml`
-4. **Environment**: pega las variables de la sección anterior
-5. **Domains**: añade los 4 hostnames a sus servicios respectivos
+1. **New Application** → Source: Git repository → URL del repo
+2. **Build pack**: Docker Compose · Compose file: `docker-compose.yml`
+3. **Environment**: pega el bloque de la sección anterior
+4. **Domains** (en cada servicio): asigna el dominio que quieras
+   - `frontend` → `tudominio.com`
+   - `backend` → `api.tudominio.com`
+   - `voice-agent` → `voice.tudominio.com`
+   - `minio` → `storage.tudominio.com`
+   Coolify pone los labels Traefik y emite certs Let's Encrypt automáticamente.
+5. **Firewall del nodo** (Server → Network): abre `10000-10020/udp` y `12000-12099/udp`. Abre `5060/udp` solo si vas a recibir llamadas inbound.
 6. **Deploy**
 
-El primer arranque corre las migraciones (007 archivos `.sql`) y crea los usuarios bootstrap. Login con `admin@timbre.ai` y la password que pusiste.
+El primer arranque corre las 9 migraciones (`001_init.sql` … `009_voice_agent_v2.sql`) y crea los usuarios bootstrap. Después, login con el email/password de `BOOTSTRAP_ADMIN_*`.
 
 ### Healthchecks
 

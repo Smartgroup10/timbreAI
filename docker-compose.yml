@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-timbre}
-      POSTGRES_USER: ${POSTGRES_USER:-timbre}
+      POSTGRES_DB: ${POSTGRES_DB:-atrium_calls}
+      POSTGRES_USER: ${POSTGRES_USER:-atrium}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timbre} -d ${POSTGRES_DB:-timbre}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atrium} -d ${POSTGRES_DB:-atrium_calls}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,14 +46,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    labels:
-      # Optional: route MinIO public S3 endpoint via Traefik when running in Coolify.
-      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
-      - "traefik.http.routers.minio.rule=Host(`${MINIO_HOST:-minio.example.com}`)"
-      - "traefik.http.routers.minio.entrypoints=websecure"
-      - "traefik.http.routers.minio.tls=true"
-      - "traefik.http.routers.minio.tls.certresolver=letsencrypt"
-      - "traefik.http.services.minio.loadbalancer.server.port=9000"
 
   backend:
     build:
@@ -61,7 +53,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
-      DATABASE_URL: ${DATABASE_URL:-postgres://timbre:change-me@postgres:5432/timbre?sslmode=disable}
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       ASTERISK_ARI_ENABLED: ${ASTERISK_ARI_ENABLED:-false}
       ASTERISK_ARI_URL: ${ASTERISK_ARI_URL:-http://asterisk:8088/ari}
@@ -70,21 +62,21 @@ services:
       ASTERISK_ARI_APP: ${ASTERISK_ARI_APP:-timbre-bot}
       SIP_TEST_EXTENSION: ${SIP_TEST_EXTENSION:-PJSIP/6001}
       SIP_CALLER_ID: ${SIP_CALLER_ID:-timbre.ai <1000>}
-      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_SECRET: ${JWT_SECRET}
       JWT_TTL: ${JWT_TTL:-12h}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@timbre.ai}
-      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-atrium123}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
       BOOTSTRAP_TENANT_EMAIL: ${BOOTSTRAP_TENANT_EMAIL:-owner@atrium.local}
-      BOOTSTRAP_TENANT_PASSWORD: ${BOOTSTRAP_TENANT_PASSWORD:-atrium123}
+      BOOTSTRAP_TENANT_PASSWORD: ${BOOTSTRAP_TENANT_PASSWORD}
       BOOTSTRAP_TENANT_ID: ${BOOTSTRAP_TENANT_ID:-atrium}
       VOICE_AGENT_URL: ${VOICE_AGENT_URL:-http://voice-agent:8090}
-      VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET:-}
+      VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-timbre}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-timbre-secret-change-me}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-timbre-recordings}
-      STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL:-http://localhost:9000}
+      STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,13 +92,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    labels:
-      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
-      - "traefik.http.routers.backend.rule=Host(`${BACKEND_HOST:-api.example.com}`)"
-      - "traefik.http.routers.backend.entrypoints=websecure"
-      - "traefik.http.routers.backend.tls=true"
-      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.backend.loadbalancer.server.port=8080"
 
   voice-agent:
     build:
@@ -115,52 +100,38 @@ services:
     environment:
       VOICE_AGENT_PORT: "8090"
       BACKEND_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
-      VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET:-}
+      VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET}
       ALLOWED_ORIGINS: ${VOICE_AGENT_ALLOWED_ORIGINS:-*}
-      # RTP transport for Asterisk External Media. The advertised host is what Asterisk uses to
-      # reach us, so it must resolve from inside the Asterisk container.
+      # Per-call RTP pool. advertise_host es lo que Asterisk usa para devolver el audio:
+      # nombre del servicio dentro de la red Docker (compose) o la IP pública si Asterisk
+      # corre fuera del cluster.
       RTP_PORT_START: ${RTP_PORT_START:-12000}
       RTP_PORT_END: ${RTP_PORT_END:-12099}
       RTP_ADVERTISE_HOST: ${RTP_ADVERTISE_HOST:-voice-agent}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview-2024-12-17}
-      OPENAI_REALTIME_VOICE: ${OPENAI_REALTIME_VOICE:-alloy}
-      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
-      DEEPGRAM_LISTEN_MODEL: ${DEEPGRAM_LISTEN_MODEL:-nova-3}
-      DEEPGRAM_THINK_PROVIDER: ${DEEPGRAM_THINK_PROVIDER:-open_ai}
-      DEEPGRAM_THINK_MODEL: ${DEEPGRAM_THINK_MODEL:-gpt-4o-mini}
-      DEEPGRAM_SPEAK_MODEL: ${DEEPGRAM_SPEAK_MODEL:-aura-asteria-en}
-      DEEPGRAM_GREETING: ${DEEPGRAM_GREETING:-}
-      ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
-      ASSEMBLYAI_VOICE: ${ASSEMBLYAI_VOICE:-ivy}
-      ASSEMBLYAI_GREETING: ${ASSEMBLYAI_GREETING:-}
+      # ─────────────────────────────────────────────────────────────────────
+      # Provider API keys (OpenAI / Deepgram / AssemblyAI) viven en Postgres
+      # (tabla tenant_voice_credentials). Cada tenant las configura desde
+      # /portal/settings. NO se ponen aquí.
+      # ─────────────────────────────────────────────────────────────────────
     expose:
       - "8090"
     ports:
       - "${VOICE_AGENT_PORT:-8091}:8090"
-      # RTP ports are UDP and bypass Traefik. Mapped 1:1 host↔container so Asterisk can hit them.
       - "${RTP_PORT_START:-12000}-${RTP_PORT_END:-12099}:12000-12099/udp"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8090/healthz"]
       interval: 15s
       timeout: 5s
       retries: 5
-    labels:
-      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
-      - "traefik.http.routers.voiceagent.rule=Host(`${VOICE_AGENT_HOST:-voice.example.com}`)"
-      - "traefik.http.routers.voiceagent.entrypoints=websecure"
-      - "traefik.http.routers.voiceagent.tls=true"
-      - "traefik.http.routers.voiceagent.tls.certresolver=letsencrypt"
-      - "traefik.http.services.voiceagent.loadbalancer.server.port=8090"
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     depends_on:
       - backend
     expose:
@@ -173,13 +144,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    labels:
-      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
-      - "traefik.http.routers.frontend.rule=Host(`${FRONTEND_HOST:-portal.example.com}`)"
-      - "traefik.http.routers.frontend.entrypoints=websecure"
-      - "traefik.http.routers.frontend.tls=true"
-      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
   asterisk:
     build:
@@ -193,8 +157,9 @@ services:
       - asterisk_spool:/var/spool/asterisk
       - asterisk_logs:/var/log/asterisk
     ports:
-      - "${ASTERISK_HTTP_PORT:-8088}:8088"
+      # SIP signaling — abre solo si vas a recibir inbound desde un proveedor SIP.
       - "${ASTERISK_SIP_PORT:-5060}:5060/udp"
+      # RTP del trunk (audio del proveedor SIP).
       - "${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10020}:10000-10020/udp"
 
 volumes:
