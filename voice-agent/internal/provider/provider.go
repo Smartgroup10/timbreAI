@@ -19,6 +19,15 @@ type Provider interface {
 
 var ErrNotConfigured = errors.New("provider_not_configured")
 
+// pick returns sessionVal if non-empty, else fallback. Used to layer per-tenant credentials over
+// the voice-agent's env defaults.
+func pick(sessionVal, fallback string) string {
+	if sessionVal != "" {
+		return sessionVal
+	}
+	return fallback
+}
+
 // SystemPrompt builds an instruction block from a bot's objective and guardrails.
 // All three downstream pipelines (OpenAI, Deepgram-LLM, AssemblyAI-LLM) take this verbatim.
 func SystemPrompt(cfg session.Config) string {
@@ -55,15 +64,11 @@ type Registry struct {
 func NewRegistry(cfg config.Config, logger *slog.Logger) *Registry {
 	r := &Registry{providers: map[string]Provider{}, logger: logger}
 	r.register(&Echo{logger: logger})
-	if cfg.OpenAI.APIKey != "" {
-		r.register(NewOpenAIRealtime(cfg.OpenAI, logger))
-	}
-	if cfg.Deepgram.APIKey != "" {
-		r.register(NewDeepgram(cfg.Deepgram, logger))
-	}
-	if cfg.AssemblyAI.APIKey != "" {
-		r.register(NewAssemblyAI(cfg.AssemblyAI, logger))
-	}
+	// All providers are always registered — they decide at Run() time whether they have enough
+	// credentials (per-tenant override OR env default) to actually start a session.
+	r.register(NewOpenAIRealtime(cfg.OpenAI, logger))
+	r.register(NewDeepgram(cfg.Deepgram, logger))
+	r.register(NewAssemblyAI(cfg.AssemblyAI, logger))
 	return r
 }
 

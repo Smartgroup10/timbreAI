@@ -101,6 +101,21 @@ export type DoNotCallEntry = {
   createdAt: string;
 };
 
+export type VoiceCredentials = {
+  tenantId: string;
+  openaiApiKey: string;
+  openaiRealtimeModel: string;
+  openaiRealtimeVoice: string;
+  deepgramApiKey: string;
+  deepgramAsrModel: string;
+  deepgramTtsModel: string;
+  deepgramLlmModel: string;
+  assemblyaiApiKey: string;
+  assemblyaiLlmModel: string;
+  assemblyaiTtsModel: string;
+  assemblyaiTtsVoice: string;
+};
+
 export type TenantSettings = {
   tenantId: string;
   timezone: string;
@@ -362,6 +377,11 @@ export const api = {
     request<TenantSettings>("GET", withTenant("/api/tenant/settings", tenantOverride)),
   updateTenantSettings: (patch: Partial<TenantSettings>, tenantOverride?: string) =>
     request<TenantSettings>("PATCH", withTenant("/api/tenant/settings", tenantOverride), patch),
+
+  voiceCredentials: (tenantOverride?: string) =>
+    request<VoiceCredentials>("GET", withTenant("/api/tenant/voice-credentials", tenantOverride)),
+  updateVoiceCredentials: (patch: Partial<VoiceCredentials>, tenantOverride?: string) =>
+    request<VoiceCredentials>("PATCH", withTenant("/api/tenant/voice-credentials", tenantOverride), patch),
 
   tenantUsers: (tenantOverride?: string) =>
     request<User[]>("GET", withTenant("/api/tenant/users", tenantOverride)),

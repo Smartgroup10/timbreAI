@@ -37,11 +37,19 @@ func NewAssemblyAI(cfg config.AssemblyAIConfig, logger *slog.Logger) *AssemblyAI
 func (a *AssemblyAI) Name() string { return "assemblyai" }
 
 func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
-	if a.cfg.APIKey == "" {
-		emit(s, session.Event{Type: "error", Message: "assemblyai api key not configured"})
+	apiKey := pick(s.Config.Credentials.AssemblyAIAPIKey, a.cfg.APIKey)
+	llmModel := pick(s.Config.Credentials.AssemblyAILLMModel, a.cfg.LLMModel)
+	ttsModel := pick(s.Config.Credentials.AssemblyAITTSModel, a.cfg.TTSModel)
+	ttsVoice := pick(s.Config.Credentials.AssemblyAITTSVoice, a.cfg.TTSVoice)
+	// LLM + TTS share OpenAI key by default.
+	llmKey := pick(s.Config.Credentials.OpenAIAPIKey, a.cfg.LLMKey)
+	ttsKey := pick(s.Config.Credentials.OpenAIAPIKey, a.cfg.TTSKey)
+
+	if apiKey == "" {
+		emit(s, session.Event{Type: "error", Message: "assemblyai api key not configured (tenant or env)"})
 		return ErrNotConfigured
 	}
-	if a.cfg.LLMKey == "" {
+	if llmKey == "" {
 		emit(s, session.Event{Type: "error", Message: "assemblyai llm key not configured"})
 		return ErrNotConfigured
 	}
@@ -58,7 +66,7 @@ func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
 	u.RawQuery = q.Encode()
 
 	headers := http.Header{}
-	headers.Set("Authorization", a.cfg.APIKey)
+	headers.Set("Authorization", apiKey)
 	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
 		emit(s, session.Event{Type: "error", Message: "assemblyai_dial: " + err.Error()})
@@ -114,7 +122,7 @@ func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
 				pipelineMu.Lock()
 				defer pipelineMu.Unlock()
 				emit(s, session.Event{Type: "status", State: "thinking"})
-				reply, err := a.completeLLM(ctx, turn)
+				reply, err := a.completeLLM(ctx, turn, llmKey, llmModel)
 				if err != nil {
 					a.logger.Warn("assemblyai llm", "error", err)
 					emit(s, session.Event{Type: "error", Message: "llm: " + err.Error()})
@@ -125,7 +133,7 @@ func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
 				s.AppendTranscript("agent", reply)
 
 				emit(s, session.Event{Type: "status", State: "speaking"})
-				audio, err := a.synthesize(ctx, reply, s.Config.Voice)
+				audio, err := a.synthesize(ctx, reply, ttsKey, ttsModel, pick(s.Config.Voice, ttsVoice))
 				if err != nil {
 					a.logger.Warn("assemblyai tts", "error", err)
 					emit(s, session.Event{Type: "error", Message: "tts: " + err.Error()})
@@ -148,9 +156,9 @@ type assemblyaiMessage struct {
 	TurnOrder  int    `json:"turn_order"`
 }
 
-func (a *AssemblyAI) completeLLM(ctx context.Context, messages []chatMessage) (string, error) {
+func (a *AssemblyAI) completeLLM(ctx context.Context, messages []chatMessage, apiKey, model string) (string, error) {
 	body, _ := json.Marshal(map[string]any{
-		"model":    a.cfg.LLMModel,
+		"model":    model,
 		"messages": messages,
 		"stream":   false,
 	})
@@ -158,7 +166,7 @@ func (a *AssemblyAI) completeLLM(ctx context.Context, messages []chatMessage) (s
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+a.cfg.LLMKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := a.http.Do(req)
 	if err != nil {
@@ -180,13 +188,10 @@ func (a *AssemblyAI) completeLLM(ctx context.Context, messages []chatMessage) (s
 }
 
 // synthesize calls the OpenAI-compatible speech endpoint and returns PCM16 audio bytes.
-// We request the wav container (16kHz mono PCM16) and strip the 44-byte RIFF header.
-func (a *AssemblyAI) synthesize(ctx context.Context, text, voice string) ([]byte, error) {
-	if voice == "" {
-		voice = a.cfg.TTSVoice
-	}
+// Key/model/voice are passed explicitly so per-tenant overrides apply.
+func (a *AssemblyAI) synthesize(ctx context.Context, text, apiKey, model, voice string) ([]byte, error) {
 	body, _ := json.Marshal(map[string]any{
-		"model":           a.cfg.TTSModel,
+		"model":           model,
 		"voice":           voice,
 		"input":           text,
 		"response_format": "wav",
@@ -195,7 +200,7 @@ func (a *AssemblyAI) synthesize(ctx context.Context, text, voice string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+a.cfg.TTSKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := a.http.Do(req)
 	if err != nil {

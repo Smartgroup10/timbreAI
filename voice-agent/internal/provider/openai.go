@@ -30,14 +30,17 @@ func NewOpenAIRealtime(cfg config.OpenAIConfig, logger *slog.Logger) *OpenAIReal
 func (o *OpenAIRealtime) Name() string { return "openai_realtime" }
 
 func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
-	if o.cfg.APIKey == "" {
-		emit(s, session.Event{Type: "error", Message: "openai api key not configured"})
+	// Per-tenant credentials override the env defaults.
+	apiKey := pick(s.Config.Credentials.OpenAIAPIKey, o.cfg.APIKey)
+	model := pick(s.Config.Credentials.OpenAIRealtimeModel, o.cfg.Model)
+	if apiKey == "" {
+		emit(s, session.Event{Type: "error", Message: "openai api key not configured (tenant or env)"})
 		return ErrNotConfigured
 	}
 
-	url := "wss://api.openai.com/v1/realtime?model=" + o.cfg.Model
+	url := "wss://api.openai.com/v1/realtime?model=" + model
 	headers := http.Header{}
-	headers.Set("Authorization", "Bearer "+o.cfg.APIKey)
+	headers.Set("Authorization", "Bearer "+apiKey)
 	headers.Set("OpenAI-Beta", "realtime=v1")
 
 	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: headers})
@@ -47,10 +50,7 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
 
-	voice := s.Config.Voice
-	if voice == "" {
-		voice = o.cfg.Voice
-	}
+	voice := pick(s.Config.Voice, pick(s.Config.Credentials.OpenAIRealtimeVoice, o.cfg.Voice))
 
 	// Configure session: PCM16 24kHz audio in/out, instructions, voice, server VAD for turn-taking.
 	initMsg := map[string]any{

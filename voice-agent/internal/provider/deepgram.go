@@ -38,21 +38,30 @@ func NewDeepgram(cfg config.DeepgramConfig, logger *slog.Logger) *Deepgram {
 func (d *Deepgram) Name() string { return "deepgram" }
 
 func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
-	if d.cfg.APIKey == "" {
-		emit(s, session.Event{Type: "error", Message: "deepgram api key not configured"})
+	// Effective credentials: per-tenant overrides win, fallback to env defaults.
+	apiKey := pick(s.Config.Credentials.DeepgramAPIKey, d.cfg.APIKey)
+	asrModel := pick(s.Config.Credentials.DeepgramASRModel, d.cfg.ASRModel)
+	ttsModel := pick(s.Config.Credentials.DeepgramTTSModel, d.cfg.TTSModel)
+	llmModel := pick(s.Config.Credentials.DeepgramLLMModel, d.cfg.LLMModel)
+	// Deepgram pipeline reuses OpenAI Chat Completions for the LLM step. If the tenant set its
+	// OpenAI key here, use that; otherwise fall back to whatever the agent boot loaded.
+	llmKey := pick(s.Config.Credentials.OpenAIAPIKey, d.cfg.LLMKey)
+
+	if apiKey == "" {
+		emit(s, session.Event{Type: "error", Message: "deepgram api key not configured (tenant or env)"})
 		return ErrNotConfigured
 	}
-	if d.cfg.LLMKey == "" {
-		emit(s, session.Event{Type: "error", Message: "deepgram llm key not configured (set DEEPGRAM_LLM_KEY or OPENAI_API_KEY)"})
+	if llmKey == "" {
+		emit(s, session.Event{Type: "error", Message: "deepgram llm key not configured"})
 		return ErrNotConfigured
 	}
 
 	conv := newConversation(SystemPrompt(s.Config))
 
 	// 1) Open ASR live socket.
-	asrURL := buildDeepgramASRURL(d.cfg.ASRModel, s.Config.Language)
+	asrURL := buildDeepgramASRURL(asrModel, s.Config.Language)
 	headers := http.Header{}
-	headers.Set("Authorization", "Token "+d.cfg.APIKey)
+	headers.Set("Authorization", "Token "+apiKey)
 	conn, _, err := websocket.Dial(ctx, asrURL, &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
 		emit(s, session.Event{Type: "error", Message: "deepgram_dial: " + err.Error()})
@@ -110,7 +119,7 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 				pipelineMu.Lock()
 				defer pipelineMu.Unlock()
 				emit(s, session.Event{Type: "status", State: "thinking"})
-				reply, err := d.completeLLM(ctx, turn)
+				reply, err := d.completeLLM(ctx, turn, llmKey, llmModel)
 				if err != nil {
 					d.logger.Warn("deepgram llm", "error", err)
 					emit(s, session.Event{Type: "error", Message: "llm: " + err.Error()})
@@ -121,7 +130,7 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 				s.AppendTranscript("agent", reply)
 
 				emit(s, session.Event{Type: "status", State: "speaking"})
-				audio, err := d.synthesize(ctx, reply, s.Config.Voice)
+				audio, err := d.synthesize(ctx, reply, apiKey, ttsModel)
 				if err != nil {
 					d.logger.Warn("deepgram tts", "error", err)
 					emit(s, session.Event{Type: "error", Message: "tts: " + err.Error()})
@@ -173,9 +182,10 @@ func (m deepgramASRMessage) Transcript() string {
 }
 
 // completeLLM calls the configured chat completion endpoint with the running conversation.
-func (d *Deepgram) completeLLM(ctx context.Context, messages []chatMessage) (string, error) {
+// Key/model are passed explicitly so per-tenant overrides take effect.
+func (d *Deepgram) completeLLM(ctx context.Context, messages []chatMessage, apiKey, model string) (string, error) {
 	body, _ := json.Marshal(map[string]any{
-		"model":    d.cfg.LLMModel,
+		"model":    model,
 		"messages": messages,
 		"stream":   false,
 	})
@@ -183,7 +193,7 @@ func (d *Deepgram) completeLLM(ctx context.Context, messages []chatMessage) (str
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+d.cfg.LLMKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := d.http.Do(req)
 	if err != nil {
@@ -205,13 +215,11 @@ func (d *Deepgram) completeLLM(ctx context.Context, messages []chatMessage) (str
 }
 
 // synthesize calls Deepgram Aura with the agent's text and returns PCM16 audio bytes.
-func (d *Deepgram) synthesize(ctx context.Context, text, voice string) ([]byte, error) {
-	if voice == "" {
-		voice = d.cfg.TTSModel
-	}
+// API key and TTS model come from the caller so per-tenant overrides apply.
+func (d *Deepgram) synthesize(ctx context.Context, text, apiKey, ttsModel string) ([]byte, error) {
 	u, _ := url.Parse("https://api.deepgram.com/v1/speak")
 	q := u.Query()
-	q.Set("model", d.cfg.TTSModel)
+	q.Set("model", ttsModel)
 	q.Set("encoding", "linear16")
 	q.Set("sample_rate", "16000")
 	u.RawQuery = q.Encode()
@@ -221,7 +229,7 @@ func (d *Deepgram) synthesize(ctx context.Context, text, voice string) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Token "+d.cfg.APIKey)
+	req.Header.Set("Authorization", "Token "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := d.http.Do(req)
 	if err != nil {

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2, UserPlus } from "lucide-react";
+import { KeyRound, Trash2, UserPlus } from "lucide-react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, TenantSettings, User } from "../../../lib/api";
+import { api, ApiError, TenantSettings, User, VoiceCredentials } from "../../../lib/api";
 import { useAuth, useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
@@ -128,6 +128,8 @@ export default function SettingsPage() {
       </section>
 
       <TenantSettingsPanel settings={settingsRes.data} loading={settingsRes.loading} error={settingsRes.error} onSaved={() => settingsRes.reload()} tenant={tenant} />
+
+      <VoiceCredentialsPanel tenant={tenant} canManage={user?.role === "tenant_admin" || user?.role === "platform_admin"} />
 
       <TeamPanel tenant={tenant} canManage={user?.role === "tenant_admin" || user?.role === "platform_admin"} currentUserId={user?.id} />
     </>
@@ -522,5 +524,155 @@ function TenantSettingsPanel({
         </p>
       ) : null}
     </form>
+  );
+}
+
+function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefined; canManage: boolean }) {
+  const creds = useResource(() => api.voiceCredentials(tenant), [tenant]);
+  const toast = useToast();
+  const [draft, setDraft] = useState<Partial<VoiceCredentials>>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setDraft({});
+  }, [tenant, creds.data]);
+
+  if (!canManage) {
+    return (
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Voz · proveedores</p>
+            <h2>Credenciales</h2>
+          </div>
+        </div>
+        <p className="subtle">Necesitas rol <code>tenant_admin</code> para gestionar las API keys de voz.</p>
+      </section>
+    );
+  }
+
+  function setField<K extends keyof VoiceCredentials>(key: K, value: VoiceCredentials[K]) {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSave() {
+    setSubmitting(true);
+    try {
+      await api.updateVoiceCredentials(draft, tenant);
+      toast.push("Credenciales actualizadas", "success");
+      setDraft({});
+      creds.reload();
+    } catch (err) {
+      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const hasChanges = Object.keys(draft).length > 0;
+  const c = creds.data;
+
+  return (
+    <section className="panel" style={{ marginTop: 16 }}>
+      <div className="panel-header">
+        <div>
+          <p className="eyebrow">Voz · proveedores</p>
+          <h2>Credenciales del tenant</h2>
+        </div>
+        <div className="actions">
+          {hasChanges ? <span className="status warn">Cambios sin guardar</span> : null}
+          <button className="button" disabled={!hasChanges || submitting} onClick={handleSave}>
+            <KeyRound aria-hidden="true" />
+            <span>{submitting ? "Guardando…" : "Guardar"}</span>
+          </button>
+        </div>
+      </div>
+
+      <p className="subtle" style={{ marginBottom: 16 }}>
+        Las claves se envían al voice-agent solo durante la creación de cada sesión y no se reflejan en el HTML.
+        Si dejas un campo vacío, el voice-agent usa el valor por defecto del entorno. Lo que ves abajo es la
+        clave enmascarada — reescribe encima para rotarla.
+      </p>
+
+      <div className="grid two">
+        <ProviderBlock
+          title="OpenAI Realtime"
+          subtitle="ASR + LLM + TTS end-to-end. Recomendado para latencia mínima."
+          c={c}
+          draft={draft}
+          fields={[
+            { key: "openaiApiKey", label: "API key", type: "password", placeholder: "sk-..." },
+            { key: "openaiRealtimeModel", label: "Modelo", placeholder: "gpt-4o-realtime-preview-2024-12-17" },
+            { key: "openaiRealtimeVoice", label: "Voz", placeholder: "alloy" },
+          ]}
+          setField={setField}
+        />
+        <ProviderBlock
+          title="Deepgram"
+          subtitle="Nova-3 ASR + LLM (OpenAI por defecto) + Aura TTS."
+          c={c}
+          draft={draft}
+          fields={[
+            { key: "deepgramApiKey", label: "API key Deepgram", type: "password", placeholder: "..." },
+            { key: "deepgramAsrModel", label: "Modelo ASR", placeholder: "nova-3" },
+            { key: "deepgramTtsModel", label: "Modelo TTS (Aura)", placeholder: "aura-asteria-en" },
+            { key: "deepgramLlmModel", label: "Modelo LLM", placeholder: "gpt-4o-mini" },
+          ]}
+          setField={setField}
+        />
+        <ProviderBlock
+          title="AssemblyAI"
+          subtitle="Universal Streaming ASR + LLM + TTS via OpenAI."
+          c={c}
+          draft={draft}
+          fields={[
+            { key: "assemblyaiApiKey", label: "API key AssemblyAI", type: "password", placeholder: "..." },
+            { key: "assemblyaiLlmModel", label: "Modelo LLM", placeholder: "gpt-4o-mini" },
+            { key: "assemblyaiTtsModel", label: "Modelo TTS", placeholder: "gpt-4o-mini-tts" },
+            { key: "assemblyaiTtsVoice", label: "Voz TTS", placeholder: "alloy" },
+          ]}
+          setField={setField}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ProviderBlock<K extends keyof VoiceCredentials>({
+  title,
+  subtitle,
+  c,
+  draft,
+  fields,
+  setField,
+}: {
+  title: string;
+  subtitle: string;
+  c: VoiceCredentials | null;
+  draft: Partial<VoiceCredentials>;
+  fields: { key: K; label: string; type?: string; placeholder?: string }[];
+  setField: <KK extends keyof VoiceCredentials>(key: KK, value: VoiceCredentials[KK]) => void;
+}) {
+  return (
+    <div className="panel" style={{ background: "var(--paper)", padding: 18 }}>
+      <p className="eyebrow">{title}</p>
+      <p className="subtle" style={{ marginBottom: 12 }}>{subtitle}</p>
+      <div style={{ display: "grid", gap: 10 }}>
+        {fields.map((f) => {
+          const current = draft[f.key] ?? (c ? (c[f.key] as string) : "");
+          return (
+            <div className="field" key={f.key as string}>
+              <label>{f.label}</label>
+              <input
+                type={f.type ?? "text"}
+                value={(current ?? "") as string}
+                placeholder={f.placeholder}
+                onChange={(e) => setField(f.key, e.target.value as VoiceCredentials[K])}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

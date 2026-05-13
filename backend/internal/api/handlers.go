@@ -326,17 +326,36 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 		if provider == "" {
 			provider = "echo"
 		}
+		// Load tenant overrides so the voice-agent uses this client's own API keys/models.
+		var creds voiceagent.Credentials
+		if vc, err := s.store.GetVoiceCredentials(r.Context(), tenantID); err == nil {
+			creds = voiceagent.Credentials{
+				OpenAIAPIKey:        vc.OpenAIAPIKey,
+				OpenAIRealtimeModel: vc.OpenAIRealtimeModel,
+				OpenAIRealtimeVoice: vc.OpenAIRealtimeVoice,
+				DeepgramAPIKey:      vc.DeepgramAPIKey,
+				DeepgramASRModel:    vc.DeepgramASRModel,
+				DeepgramTTSModel:    vc.DeepgramTTSModel,
+				DeepgramLLMModel:    vc.DeepgramLLMModel,
+				AssemblyAIAPIKey:    vc.AssemblyAIAPIKey,
+				AssemblyAILLMModel:  vc.AssemblyAILLMModel,
+				AssemblyAITTSModel:  vc.AssemblyAITTSModel,
+				AssemblyAITTSVoice:  vc.AssemblyAITTSVoice,
+			}
+		}
+
 		voiceCtx, cancel := contextWithTimeout(r.Context(), 5*time.Second)
 		sess, err := s.voiceAgent.CreateSession(voiceCtx, voiceagent.Config{
-			CallID:     created.ID,
-			TenantID:   tenantID,
-			BotID:      req.BotID,
-			Provider:   provider,
-			Objective:  bot.Objective,
-			Guardrails: bot.Guardrails,
-			Language:   bot.Language,
-			Voice:      bot.Voice,
-			LeadName:   req.LeadName,
+			CallID:      created.ID,
+			TenantID:    tenantID,
+			BotID:       req.BotID,
+			Provider:    provider,
+			Objective:   bot.Objective,
+			Guardrails:  bot.Guardrails,
+			Language:    bot.Language,
+			Voice:       bot.Voice,
+			LeadName:    req.LeadName,
+			Credentials: creds,
 		})
 		cancel()
 		if err != nil {
