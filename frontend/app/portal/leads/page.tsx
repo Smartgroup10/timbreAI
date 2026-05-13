@@ -62,7 +62,7 @@ export default function LeadsPage() {
 
   async function handleCreate(input: Partial<Lead>) {
     try {
-      await api.createLead(input);
+      await api.createLead(input, tenant);
       toast.push("Lead creado", "success");
       setFormOpen(false);
       leads.reload();
