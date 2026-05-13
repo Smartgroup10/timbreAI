@@ -43,6 +43,11 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 	thinkModel := pick(s.Config.Credentials.DeepgramThinkModel, d.cfg.ThinkModel)
 	speakModel := pick(s.Config.Credentials.DeepgramSpeakModel, d.cfg.SpeakModel)
 	greeting := pick(s.Config.Credentials.DeepgramGreeting, d.cfg.Greeting)
+	// Para think providers externos (open_ai, anthropic, ...) Deepgram necesita
+	// la API key del LLM. Aquí cogemos la del propio tenant — si el cliente
+	// ha configurado OpenAI key en /portal/settings, la reutilizamos para que
+	// Deepgram pueda llamar a OpenAI en su nombre.
+	openaiKey := pick(s.Config.Credentials.OpenAIAPIKey, "")
 
 	if apiKey == "" {
 		emit(s, session.Event{Type: "error", Message: "deepgram api key not configured (tenant or env)"})
@@ -80,13 +85,7 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 					"model": listenModel,
 				},
 			},
-			"think": map[string]any{
-				"provider": map[string]any{
-					"type":  thinkProvider,
-					"model": thinkModel,
-				},
-				"prompt": SystemPrompt(s.Config),
-			},
+			"think":    d.buildThinkSection(thinkProvider, thinkModel, openaiKey, SystemPrompt(s.Config)),
 			"speak": map[string]any{
 				"provider": map[string]any{
 					"type":  "deepgram",
@@ -157,6 +156,46 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 			d.handleEvent(raw, s)
 		}
 	}
+}
+
+// buildThinkSection arma el bloque "think" del Settings de Deepgram. Para los
+// providers externos open_ai/anthropic, Deepgram NECESITA que le pasemos las
+// credenciales del LLM en `endpoint.headers.authorization` — si no, la WS se
+// queda abierta, recibe audio, pero nunca responde (el LLM call falla en
+// silencio dentro de Deepgram).
+//
+// Si el operador no ha configurado la key del LLM externo, NO usamos endpoint
+// y dejamos que Deepgram intente con sus credenciales por defecto (puede
+// funcionar si el proyecto Deepgram tiene la integración pre-configurada).
+func (d *Deepgram) buildThinkSection(provider, model, externalKey, prompt string) map[string]any {
+	think := map[string]any{
+		"provider": map[string]any{
+			"type":  provider,
+			"model": model,
+		},
+		"prompt": prompt,
+	}
+	if externalKey == "" {
+		return think
+	}
+	// Mapa provider → endpoint URL canónico.
+	endpointURL := ""
+	switch provider {
+	case "open_ai":
+		endpointURL = "https://api.openai.com/v1/chat/completions"
+	case "anthropic":
+		endpointURL = "https://api.anthropic.com/v1/messages"
+	}
+	if endpointURL == "" {
+		return think
+	}
+	think["endpoint"] = map[string]any{
+		"url": endpointURL,
+		"headers": map[string]any{
+			"authorization": "Bearer " + externalKey,
+		},
+	}
+	return think
 }
 
 func (d *Deepgram) handleEvent(raw []byte, s *session.Session) {
