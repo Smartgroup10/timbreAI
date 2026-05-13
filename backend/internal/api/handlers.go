@@ -361,6 +361,26 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 				AssemblyAIGreeting:    vc.AssemblyAIGreeting,
 			}
 		}
+		// Downgrade a 'echo' si el provider del bot exige credenciales que el
+		// tenant no ha configurado. Si no, el provider arranca, falla al hacer
+		// dial (sin API key), el goroutine muere, registry.Remove deja la
+		// sesión huérfana y AllocateRTP devuelve 404 → la llamada se cuelga
+		// al descolgar el callee. Con echo al menos el bridge de audio
+		// funciona y el operador puede confirmar el plumbing.
+		hasCreds := true
+		switch provider {
+		case "openai_realtime":
+			hasCreds = creds.OpenAIAPIKey != ""
+		case "deepgram":
+			hasCreds = creds.DeepgramAPIKey != ""
+		case "assemblyai":
+			hasCreds = creds.AssemblyAIAPIKey != ""
+		}
+		if !hasCreds {
+			s.logger.Warn("test call: no creds for provider, fallback to echo",
+				"bot", req.BotID, "provider", provider)
+			provider = "echo"
+		}
 
 		voiceCtx, cancel := contextWithTimeout(r.Context(), 5*time.Second)
 		sess, err := s.voiceAgent.CreateSession(voiceCtx, voiceagent.Config{
