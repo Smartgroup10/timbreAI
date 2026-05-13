@@ -1,22 +1,12 @@
-FROM debian:bookworm
+# Use a pre-built community image to avoid apt-get build flakiness in Coolify's
+# build sandbox. andrius/asterisk bundles chan_pjsip, res_ari, core sounds and
+# runs as the asterisk user out of the box.
+#
+# Pin the major version so upstream changes don't surprise us.
+FROM andrius/asterisk:latest
 
-ARG DEBIAN_FRONTEND=noninteractive
-
-# Full debian:bookworm (no slim) avoids missing base tools, and we let apt pull the
-# recommended packages — asterisk needs several module collections + sound files which
-# apt classifies as "recommends" and `--no-install-recommends` would skip.
-RUN set -eux \
-    && apt-get update \
-    && apt-get install -y \
-        asterisk \
-        asterisk-modules \
-        asterisk-core-sounds-en \
-        ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
-    && mkdir -p /var/spool/asterisk /var/log/asterisk \
-    && chown -R asterisk:asterisk /var/spool/asterisk /var/log/asterisk
+# Custom configs are mounted via docker-compose.yml at runtime:
+#   ./asterisk/etc/asterisk:/etc/asterisk:ro
+# This Dockerfile stays minimal — the image's CMD already runs asterisk in foreground.
 
 EXPOSE 5060/udp 8088 10000-10020/udp
-
-CMD ["/usr/sbin/asterisk", "-f", "-U", "asterisk", "-G", "asterisk", "-vvv"]
