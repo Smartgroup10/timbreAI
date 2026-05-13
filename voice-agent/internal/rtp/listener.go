@@ -174,17 +174,27 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 
+	// Stats simétricos al readLoop. Si tras una llamada vemos sent=0 con
+	// chunks_recv>0 → el provider está dando audio pero algo bloquea el envío
+	// hacia Asterisk (típicamente: remoteAddr nil → buffer drop).
+	var pktSent, chunksReceived uint64
+	var droppedNoPeer uint64
+	statTick := time.NewTicker(5 * time.Second)
+	defer statTick.Stop()
+
 	flush := func(now bool) {
 		l.mu.Lock()
 		remote := l.remoteAddr
 		l.mu.Unlock()
 		if remote == nil {
 			// Haven't heard from Asterisk yet; drop the audio.
+			droppedNoPeer += uint64(len(buf))
 			buf = buf[:0]
 			return
 		}
 		for len(buf) >= frameBytes {
 			l.sendPacket(remote, buf[:frameBytes])
+			pktSent++
 			buf = buf[frameBytes:]
 		}
 		if now && len(buf) > 0 {
@@ -192,6 +202,7 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 			pad := make([]byte, frameBytes-len(buf))
 			frame := append(buf, pad...)
 			l.sendPacket(remote, frame)
+			pktSent++
 			buf = buf[:0]
 		}
 		_ = samplesPerFrame
@@ -201,11 +212,17 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-statTick.C:
+			if chunksReceived > 0 || pktSent > 0 {
+				l.logger.Info("rtp write stats", "port", l.port,
+					"chunks_recv", chunksReceived, "pkt_sent", pktSent, "dropped_no_peer", droppedNoPeer)
+			}
 		case chunk, ok := <-audioOut:
 			if !ok {
 				flush(true)
 				return
 			}
+			chunksReceived++
 			buf = append(buf, chunk...)
 			flush(false)
 		case <-ticker.C:
