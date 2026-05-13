@@ -1,7 +1,33 @@
-import { api, statusClass } from "../../../lib/api";
+"use client";
 
-export default async function CallsPage() {
-  const calls = await api.calls();
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { TestCallDrawer } from "../../../components/test-call-drawer";
+import { api, statusClass } from "../../../lib/api";
+import { useTenantScope } from "../../../lib/auth-context";
+import { useResource } from "../../../lib/use-resource";
+
+const STATUS_FILTERS = ["all", "completed", "queued", "dialing", "failed", "skipped"] as const;
+
+export default function CallsPage() {
+  const tenant = useTenantScope();
+  const calls = useResource(() => api.calls(tenant), [tenant]);
+  const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    const data = calls.data ?? [];
+    if (filter === "all") return data;
+    return data.filter((c) => c.status === filter);
+  }, [calls.data, filter]);
+
+  function formatDuration(sec: number) {
+    if (!sec) return "—";
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s === 0 ? `${m}m` : `${m}m ${s}s`;
+  }
 
   return (
     <>
@@ -12,46 +38,88 @@ export default async function CallsPage() {
           <p className="subtle">Historial operativo con resultado, duracion y resumen accionable del bot.</p>
         </div>
         <div className="actions">
-          <button className="button secondary">Exportar</button>
-          <button className="button">Llamada de prueba</button>
+          <button className="button secondary" disabled>
+            Exportar
+          </button>
+          <button className="button" onClick={() => setDrawerOpen(true)}>
+            Llamada de prueba
+          </button>
         </div>
       </div>
 
       <div className="filter-row">
-        <span className="chip">Todas</span>
-        <span className="chip">Completadas</span>
-        <span className="chip">Callbacks</span>
-        <span className="chip">En cola</span>
+        {STATUS_FILTERS.map((opt) => (
+          <button
+            key={opt}
+            className={`chip-button${filter === opt ? " active" : ""}`}
+            onClick={() => setFilter(opt)}
+          >
+            {opt === "all" ? "Todas" : opt}
+          </button>
+        ))}
+        <button className="chip-button" onClick={() => calls.reload()}>
+          Refrescar
+        </button>
       </div>
 
       <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Lead</th>
-              <th>Telefono</th>
-              <th>Campana</th>
-              <th>Estado</th>
-              <th>Resultado</th>
-              <th>Duracion</th>
-              <th>Resumen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {calls.map((call) => (
-              <tr key={call.id}>
-                <td className="primary-cell">{call.leadName}</td>
-                <td>{call.phone}</td>
-                <td>{call.campaign}</td>
-                <td><span className={statusClass(call.status)}>{call.status}</span></td>
-                <td><span className="chip">{call.outcome}</span></td>
-                <td>{call.durationSec ? `${Math.round(call.durationSec / 60)} min` : "-"}</td>
-                <td className="summary-cell">{call.summary || "Pendiente de ejecucion"}</td>
+        {calls.loading ? (
+          <div className="empty-state">Cargando…</div>
+        ) : calls.error ? (
+          <div className="empty-state danger">Error: {calls.error}</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">Sin llamadas que coincidan con el filtro.</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Lead</th>
+                <th>Telefono</th>
+                <th>Campana</th>
+                <th>Estado</th>
+                <th>Resultado</th>
+                <th>Duracion</th>
+                <th>Canal</th>
+                <th>Resumen</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((call) => (
+                <tr key={call.id} style={{ cursor: "pointer" }}>
+                  <td className="primary-cell">
+                    <Link href={`/portal/calls/${call.id}`} style={{ color: "inherit" }}>
+                      {call.leadName || "—"}
+                    </Link>
+                  </td>
+                  <td>{call.phone}</td>
+                  <td>{call.campaign || "—"}</td>
+                  <td>
+                    <span className={statusClass(call.status)}>{call.status}</span>
+                  </td>
+                  <td>
+                    <span className="chip">{call.outcome}</span>
+                  </td>
+                  <td>{formatDuration(call.durationSec)}</td>
+                  <td>
+                    <code className="mono">{call.channelId || "—"}</code>
+                  </td>
+                  <td className="summary-cell">
+                    <Link href={`/portal/calls/${call.id}`} style={{ color: "inherit" }}>
+                      {call.summary || "Ver detalle"}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
+
+      <TestCallDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onCallCreated={() => calls.reload()}
+      />
     </>
   );
 }

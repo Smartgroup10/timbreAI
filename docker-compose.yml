@@ -26,43 +26,166 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-callhub}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-callhub-secret-change-me}
+    volumes:
+      - minio_data:/data
+    expose:
+      - "9000"
+      - "9001"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      # Optional: route MinIO public S3 endpoint via Traefik when running in Coolify.
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.minio.rule=Host(`${MINIO_HOST:-minio.example.com}`)"
+      - "traefik.http.routers.minio.entrypoints=websecure"
+      - "traefik.http.routers.minio.tls=true"
+      - "traefik.http.routers.minio.tls.certresolver=letsencrypt"
+      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+
   backend:
     build:
       context: ./backend
     restart: unless-stopped
     environment:
-      PORT: ${BACKEND_PORT:-8080}
+      PORT: "8080"
       DATABASE_URL: ${DATABASE_URL:-postgres://atrium:change-me@postgres:5432/atrium_calls?sslmode=disable}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      ASTERISK_ARI_URL: http://asterisk:8088/ari
-      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-atrium}
+      ASTERISK_ARI_ENABLED: ${ASTERISK_ARI_ENABLED:-false}
+      ASTERISK_ARI_URL: ${ASTERISK_ARI_URL:-http://asterisk:8088/ari}
+      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-callhub}
       ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
+      ASTERISK_ARI_APP: ${ASTERISK_ARI_APP:-callhub-bot}
+      SIP_TEST_EXTENSION: ${SIP_TEST_EXTENSION:-PJSIP/6001}
+      SIP_CALLER_ID: ${SIP_CALLER_ID:-CallHub <1000>}
       JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_TTL: ${JWT_TTL:-12h}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@callhub.local}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-atrium123}
+      BOOTSTRAP_TENANT_EMAIL: ${BOOTSTRAP_TENANT_EMAIL:-owner@atrium.local}
+      BOOTSTRAP_TENANT_PASSWORD: ${BOOTSTRAP_TENANT_PASSWORD:-atrium123}
+      BOOTSTRAP_TENANT_ID: ${BOOTSTRAP_TENANT_ID:-atrium}
+      VOICE_AGENT_URL: ${VOICE_AGENT_URL:-http://voice-agent:8090}
+      VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET:-}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-callhub}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-callhub-secret-change-me}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-callhub-recordings}
+      STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL:-http://localhost:9000}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    expose:
+      - "8080"
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.backend.rule=Host(`${BACKEND_HOST:-api.example.com}`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=8080"
+
+  voice-agent:
+    build:
+      context: ./voice-agent
+    restart: unless-stopped
+    environment:
+      VOICE_AGENT_PORT: "8090"
+      BACKEND_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
+      VOICE_AGENT_SHARED_SECRET: ${VOICE_AGENT_SHARED_SECRET:-}
+      ALLOWED_ORIGINS: ${VOICE_AGENT_ALLOWED_ORIGINS:-*}
+      # RTP transport for Asterisk External Media. The advertised host is what Asterisk uses to
+      # reach us, so it must resolve from inside the Asterisk container.
+      RTP_PORT_START: ${RTP_PORT_START:-12000}
+      RTP_PORT_END: ${RTP_PORT_END:-12099}
+      RTP_ADVERTISE_HOST: ${RTP_ADVERTISE_HOST:-voice-agent}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview-2024-12-17}
+      OPENAI_REALTIME_VOICE: ${OPENAI_REALTIME_VOICE:-alloy}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      DEEPGRAM_ASR_MODEL: ${DEEPGRAM_ASR_MODEL:-nova-3}
+      DEEPGRAM_TTS_MODEL: ${DEEPGRAM_TTS_MODEL:-aura-asteria-en}
+      DEEPGRAM_LLM_MODEL: ${DEEPGRAM_LLM_MODEL:-gpt-4o-mini}
+      ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
+      ASSEMBLYAI_LLM_MODEL: ${ASSEMBLYAI_LLM_MODEL:-gpt-4o-mini}
+      ASSEMBLYAI_TTS_MODEL: ${ASSEMBLYAI_TTS_MODEL:-gpt-4o-mini-tts}
+      ASSEMBLYAI_TTS_VOICE: ${ASSEMBLYAI_TTS_VOICE:-alloy}
+    expose:
+      - "8090"
+    ports:
+      - "${VOICE_AGENT_PORT:-8091}:8090"
+      # RTP ports are UDP and bypass Traefik. Mapped 1:1 host↔container so Asterisk can hit them.
+      - "${RTP_PORT_START:-12000}-${RTP_PORT_END:-12099}:12000-12099/udp"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:8090/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.voiceagent.rule=Host(`${VOICE_AGENT_HOST:-voice.example.com}`)"
+      - "traefik.http.routers.voiceagent.entrypoints=websecure"
+      - "traefik.http.routers.voiceagent.tls=true"
+      - "traefik.http.routers.voiceagent.tls.certresolver=letsencrypt"
+      - "traefik.http.services.voiceagent.loadbalancer.server.port=8090"
 
   frontend:
     build:
       context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     depends_on:
       - backend
+    expose:
+      - "3000"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--spider", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.frontend.rule=Host(`${FRONTEND_HOST:-portal.example.com}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
   asterisk:
     build:
       context: ./asterisk
     restart: unless-stopped
     environment:
-      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-atrium}
+      ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-callhub}
       ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
     volumes:
       - ./asterisk/etc/asterisk:/etc/asterisk:ro
@@ -76,6 +199,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
   asterisk_spool:
   asterisk_logs:
-

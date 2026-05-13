@@ -1,79 +1,136 @@
 # Despliegue en Coolify
 
-## Donde montarlo
+CallHub se despliega como una sola aplicación Docker Compose con 7 servicios. Coolify se encarga
+de Traefik (TLS + routing por hostname) para los servicios HTTP; los puertos SIP/RTP (UDP) se
+exponen directamente al host.
 
-El VPS con Coolify es una buena primera opcion para este producto si se arranca con bajo volumen y campañas controladas.
+## Topología en producción
 
-Recomendacion inicial:
+```
+                          ┌────────────────────────┐
+                          │ Traefik (Coolify)      │
+                          │ portal.tudominio.com   │
+                          │ api.tudominio.com      │
+                          │ voice.tudominio.com    │
+                          │ storage.tudominio.com  │
+                          └────────────┬───────────┘
+                                       │ HTTPS
+       ┌───────────────┬───────────────┼───────────────┬────────────────┐
+       ▼               ▼               ▼               ▼                ▼
+   frontend        backend        voice-agent       minio           (interno)
+   :3000           :8080          :8090             :9000           postgres, redis
+                                                                    asterisk
+                                  ┌────────────────────────────────────┐
+                                  │ UDP directo al host (no via Traefik)│
+                                  ├────────────────────────────────────┤
+                                  │ asterisk    5060/udp  (SIP)        │
+                                  │ asterisk    10000-10020/udp (RTP)  │
+                                  │ voice-agent 12000-12099/udp (RTP)  │
+                                  └────────────────────────────────────┘
+```
 
-- 2 vCPU minimo.
-- 4 GB RAM minimo.
-- 40 GB disco.
-- Ubuntu/Debian.
-- Puertos web gestionados por Coolify/Traefik.
-- Puertos SIP/RTP abiertos solo cuando conectemos un trunk o extensiones externas.
+## Recursos mínimos
 
-Cuando haya llamadas reales con volumen, conviene separar telefonia:
+- 2 vCPU, 4 GB RAM, 40 GB disco para sandbox/pre-prod.
+- 4 vCPU, 8 GB RAM si hay > 50 llamadas concurrentes (cada conversación cuesta CPU por la
+  conversión PCM/RTP en el voice-agent y por el LLM remoto).
 
-- App SaaS en Coolify.
-- Asterisk en VPS dedicado o nodo separado con IP publica estable.
-- Postgres gestionado o backups automatizados.
+Cuando crezca, separar Asterisk en un VPS dedicado con IP pública estable (los proveedores SIP
+prefieren IP fija para identify).
 
-## Servicios del compose
+## Pasos en Coolify
 
-- `frontend`: portal cliente y backoffice.
-- `backend`: API Go.
-- `postgres`: base de datos.
-- `redis`: colas y jobs.
-- `asterisk`: PBX con ARI preparado.
+1. **Push** del repo a GitHub: `https://github.com/Smartgroup10/timbreAI`
+2. **New resource** → **Application** → **Public Repository** o conectar GitHub directamente
+3. **Build pack**: Docker Compose
+4. **Compose file**: `docker-compose.yml`
+5. **Environment variables**: pega el bloque de la sección "Variables clave" del [README](../README.md#variables-clave-para-coolify)
+6. **Domains**: añade los 4 hostnames y mapéalos a sus servicios
+   - `FRONTEND_HOST` → `frontend`
+   - `BACKEND_HOST` → `backend`
+   - `VOICE_AGENT_HOST` → `voice-agent`
+   - `MINIO_HOST` → `minio`
+7. **Open ports** en la sección de network del nodo Coolify:
+   - 5060/udp (SIP, solo si vas a recibir llamadas inbound)
+   - 10000-10020/udp (RTP del proveedor SIP)
+   - 12000-12099/udp (RTP del External Media)
+8. **Deploy**
 
-## Pasos
+## Variables que SÍ o SÍ debes cambiar
 
-1. Subir este repo a GitHub.
-2. En Coolify, crear nuevo recurso desde GitHub.
-3. Elegir Docker Compose.
-4. Configurar variables de entorno desde `.env.example`.
-5. Asignar dominio al servicio `frontend`.
-6. Opcional: asignar subdominio privado al `backend`.
-7. Desplegar.
+| Variable | Por qué |
+|---|---|
+| `JWT_SECRET` | El default rechaza el arranque. `openssl rand -base64 48` |
+| `VOICE_AGENT_SHARED_SECRET` | Sin esto, los endpoints internos están abiertos a cualquiera que llegue a la red docker |
+| `STORAGE_SECRET_KEY` | Clave MinIO. Cambia también `STORAGE_ACCESS_KEY` |
+| `POSTGRES_PASSWORD` y `DATABASE_URL` | Default = `change-me` |
+| `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_TENANT_PASSWORD` | Default = `atrium123`. Cámbialos antes del primer arranque |
+| `STORAGE_PUBLIC_URL` | Debe ser HTTPS pública (`https://storage.tudominio.com`) para que el navegador pueda reproducir grabaciones |
+| `ALLOWED_ORIGINS` | Lista exacta de orígenes que pueden hacer CORS al backend. En prod: `https://portal.tudominio.com` |
 
-## Variables importantes
+## Voice agent y proveedores
 
-- `POSTGRES_PASSWORD`
-- `DATABASE_URL`
-- `JWT_SECRET`
-- `NEXT_PUBLIC_API_URL`
-- `ASTERISK_ARI_USER`
-- `ASTERISK_ARI_PASSWORD`
-- `OPENAI_API_KEY`
+El voice-agent registra solo los proveedores que tienen API key configurada al boot:
 
-## Notas de Asterisk
+- `OPENAI_API_KEY` → habilita `openai_realtime` y la rama LLM por defecto de Deepgram/AssemblyAI
+- `DEEPGRAM_API_KEY` → habilita `deepgram` (Nova-3 ASR + LLM via OpenAI + Aura TTS)
+- `ASSEMBLYAI_API_KEY` → habilita `assemblyai` (Universal Streaming + LLM via OpenAI + OpenAI TTS)
+- Sin keys → solo `echo` (sandbox)
 
-El archivo `asterisk/etc/asterisk/ari.conf` trae credenciales demo. Antes de exponer ARI en produccion, cambiar usuario/password y restringir acceso por red.
+El bot elige su provider desde `/portal/bots` → editar → "Provider de voz".
 
-Puertos:
+## Asterisk en producción
 
-- `8088`: ARI/HTTP de Asterisk.
-- `5060/udp`: SIP.
-- `10000-10020/udp`: RTP de prueba.
+El contenedor `asterisk` corre Asterisk 22 con módulos PJSIP y ARI. Lo que **debes** hacer
+antes de exponerlo:
 
-En produccion real, RTP necesitara un rango mas amplio y reglas NAT/Firewall cuidadas.
+1. Cambiar credenciales ARI (`asterisk/etc/asterisk/ari.conf` + `ASTERISK_ARI_USER/PASSWORD`)
+2. Configurar al menos un trunk SIP en `asterisk/etc/asterisk/pjsip.conf` (hay 3 plantillas
+   comentadas para Twilio, Vonage y Telnyx)
+3. Restringir el puerto 8088 al host de backend (`network_mode: bridge` ya lo aísla; verifica
+   el firewall del nodo)
+4. Habilitar ARI desde el backend: `ASTERISK_ARI_ENABLED=true`
+5. Reload de Asterisk tras cambios en pjsip.conf: `docker compose exec asterisk asterisk -rx "pjsip reload"`
 
-## Primer despliegue seguro
+## Storage (MinIO) en producción
 
-Para el primer deploy, se puede dejar Asterisk sin exponer SIP publicamente y usar solo:
+MinIO funciona perfecto para sandbox y producción ligera. Para volúmenes serios, sustituye por
+S3 real (Backblaze B2, R2, Wasabi) cambiando solo:
 
-- frontend por HTTPS
-- backend interno
-- Postgres/Redis internos
-- ARI accesible solo dentro de la red Docker
+```bash
+STORAGE_ENDPOINT=https://s3.us-east-1.amazonaws.com
+STORAGE_ACCESS_KEY=AKIA...
+STORAGE_SECRET_KEY=...
+STORAGE_BUCKET=callhub-prod-recordings
+STORAGE_PUBLIC_URL=https://callhub-prod-recordings.s3.us-east-1.amazonaws.com
+```
 
-Luego se conecta el trunk SIP cuando ya tengamos:
+El cliente S3 del backend es signature-v4 nativo, no SDK pesado: cualquier endpoint S3-compatible
+funciona.
 
-- autenticacion real
-- tenant isolation
-- opt-out
-- consentimientos
-- logs
-- limites de campaña
+## Rollbacks
 
+Coolify guarda imágenes anteriores. Para revertir, vuelve al deploy anterior en la UI. Las
+migraciones de DB no se revierten automáticamente — si una migración rompió algo, hay que
+hacer rollback manual con un script SQL antes de redeployar la versión anterior.
+
+## Healthchecks y zero-downtime
+
+Todos los servicios HTTP tienen healthcheck. Coolify hace rolling restart respetando los checks,
+así que las migraciones corren antes de que la versión nueva pase a "healthy".
+
+Para que la conversación no se interrumpa en deploys, el voice-agent **no** persiste sesiones
+entre restarts (las llamadas activas se cortan). Si necesitas zero-downtime para llamadas en
+curso, hay que duplicar la instancia y orquestar el drenaje — fuera del MVP.
+
+## Primer test post-deploy
+
+```bash
+curl https://api.tudominio.com/healthz
+# {"ariEnabled":true,"status":"ok","time":"...","version":"0.1.0"}
+
+# Login
+curl -X POST https://api.tudominio.com/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@callhub.local","password":"<el que pusiste>"}'
+```

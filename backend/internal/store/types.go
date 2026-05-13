@@ -1,0 +1,171 @@
+package store
+
+import "time"
+
+type Tenant struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	Plan      string    `json:"plan"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type User struct {
+	ID           string     `json:"id"`
+	TenantID     *string    `json:"tenantId,omitempty"`
+	Email        string     `json:"email"`
+	Name         string     `json:"name"`
+	Role         string     `json:"role"`
+	PasswordHash string     `json:"-"`
+	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
+	CreatedAt    time.Time  `json:"createdAt"`
+}
+
+type Lead struct {
+	ID           string    `json:"id"`
+	TenantID     string    `json:"tenantId"`
+	Name         string    `json:"name"`
+	Phone        string    `json:"phone"`
+	Email        string    `json:"email"`
+	Type         string    `json:"type"`
+	Status       string    `json:"status"`
+	Source       string    `json:"source"`
+	Consent      string    `json:"consent"`
+	LastActivity time.Time `json:"lastActivity"`
+}
+
+type Property struct {
+	ID           string   `json:"id"`
+	TenantID     string   `json:"tenantId"`
+	Name         string   `json:"name"`
+	Address      string   `json:"address"`
+	Price        string   `json:"price"`
+	Availability string   `json:"availability"`
+	Requirements []string `json:"requirements"`
+	FAQs         []string `json:"faqs"`
+}
+
+type Bot struct {
+	ID            string   `json:"id"`
+	TenantID      string   `json:"tenantId"`
+	Name          string   `json:"name"`
+	Type          string   `json:"type"`
+	Language      string   `json:"language"`
+	Voice         string   `json:"voice"`
+	Status        string   `json:"status"`
+	Objective     string   `json:"objective"`
+	Guardrails    []string `json:"guardrails"`
+	VoiceProvider string   `json:"voiceProvider"`
+	DIDID         *string  `json:"didId,omitempty"`
+	DIDE164       string   `json:"didE164,omitempty"`
+	TrunkID       string   `json:"trunkId,omitempty"`
+}
+
+type SIPTrunk struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Provider         string    `json:"provider"`
+	AsteriskEndpoint string    `json:"asteriskEndpoint"`
+	Host             string    `json:"host"`
+	Port             int       `json:"port"`
+	Status           string    `json:"status"`
+	Notes            string    `json:"notes"`
+	DIDCount         int       `json:"didCount"`
+	CreatedAt        time.Time `json:"createdAt"`
+}
+
+type DID struct {
+	ID               string    `json:"id"`
+	TrunkID          string    `json:"trunkId"`
+	TrunkName        string    `json:"trunkName,omitempty"`
+	AsteriskEndpoint string    `json:"asteriskEndpoint,omitempty"`
+	TenantID         *string   `json:"tenantId,omitempty"`
+	E164             string    `json:"e164"`
+	Label            string    `json:"label"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"createdAt"`
+}
+
+type Campaign struct {
+	ID                   string `json:"id"`
+	TenantID             string `json:"tenantId"`
+	Name                 string `json:"name"`
+	BotID                string `json:"botId"`
+	Status               string `json:"status"`
+	Schedule             string `json:"schedule"`
+	LeadCount            int    `json:"leadCount"`
+	MaxAttempts          int    `json:"maxAttempts"`
+	RetryCooldownMinutes int    `json:"retryCooldownMinutes"`
+}
+
+type CampaignLead struct {
+	ID            string  `json:"id"`
+	TenantID      string  `json:"tenantId"`
+	CampaignID    string  `json:"campaignId"`
+	LeadID        string  `json:"leadId"`
+	LeadName      string  `json:"leadName,omitempty"`
+	LeadPhone     string  `json:"leadPhone,omitempty"`
+	Status        string  `json:"status"`
+	Attempts      int     `json:"attempts"`
+	LastAttemptAt *string `json:"lastAttemptAt,omitempty"`
+	Outcome       string  `json:"outcome"`
+}
+
+type Call struct {
+	ID             string     `json:"id"`
+	TenantID       string     `json:"tenantId"`
+	LeadID         *string    `json:"leadId,omitempty"`
+	CampaignID     *string    `json:"campaignId,omitempty"`
+	LeadName       string     `json:"leadName"`
+	Campaign       string     `json:"campaign"`
+	Phone          string     `json:"phone"`
+	Status         string     `json:"status"`
+	Outcome         string     `json:"outcome"`
+	DurationSec    int        `json:"durationSec"`
+	ChannelID      string     `json:"channelId"`
+	VoiceSessionID string     `json:"voiceSessionId,omitempty"`
+	StartedAt      *time.Time `json:"startedAt,omitempty"`
+	EndedAt        *time.Time `json:"endedAt,omitempty"`
+	Summary        string     `json:"summary"`
+	RecordingURL   string     `json:"recordingUrl,omitempty"`
+}
+
+type Overview struct {
+	CallsToday      int `json:"callsToday"`
+	QualifiedLeads  int `json:"qualifiedLeads"`
+	Callbacks       int `json:"callbacks"`
+	ActiveCampaigns int `json:"activeCampaigns"`
+	QueuedCalls     int `json:"queuedCalls"`
+}
+
+type DoNotCallEntry struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId"`
+	Phone     string    `json:"phone"`
+	Reason    string    `json:"reason"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type TenantSettings struct {
+	TenantID          string    `json:"tenantId"`
+	Timezone          string    `json:"timezone"`
+	CallerIDDefault   string    `json:"callerIdDefault"`
+	AllowedHoursStart string    `json:"allowedHoursStart"`
+	AllowedHoursEnd   string    `json:"allowedHoursEnd"`
+	AllowedDays       []string  `json:"allowedDays"`
+	DailyCallCap      int       `json:"dailyCallCap"`
+	RecordingEnabled  bool      `json:"recordingEnabled"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+type AuditLogEntry struct {
+	ID         string         `json:"id"`
+	TenantID   *string        `json:"tenantId,omitempty"`
+	ActorID    string         `json:"actorId"`
+	ActorEmail string         `json:"actorEmail,omitempty"`
+	Action     string         `json:"action"`
+	EntityType string         `json:"entityType"`
+	EntityID   string         `json:"entityId"`
+	Payload    map[string]any `json:"payload"`
+	CreatedAt  time.Time      `json:"createdAt"`
+}

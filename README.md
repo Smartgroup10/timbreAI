@@ -1,24 +1,24 @@
-# Bot de llamadas para Atrium
+# CallHub
 
-Base inicial para montar una aplicacion SaaS de llamadas con IA usando Asterisk.
+Plataforma SaaS multi-tenant para que clientes inmobiliarios configuren bots que llaman a leads. CallHub es el nombre interno de trabajo; cada cliente final (p.ej. Atrium) vive como un tenant aislado en la misma instancia.
 
 El producto tiene dos flujos principales:
 
 1. Lead inbound: una persona escribe interesada en rentar una propiedad y la IA la llama para explicar la propiedad, requisitos, proceso de aplicacion y proximos pasos.
-2. Lead outbound: la IA llama a propietarios o leads de Atrium para explicar el servicio, responder preguntas y calificar interes.
+2. Lead outbound: la IA llama a propietarios o leads del cliente para explicar el servicio, responder preguntas y calificar interes.
 
 La recomendacion es construir primero un MVP controlado, con leads que ya dieron permiso o que vienen de una relacion previa, antes de escalar a campañas de cold calling.
 
 ## Estado actual
 
-El repositorio ya trae un primer esqueleto desplegable:
+El repositorio trae un MVP operativo end-to-end:
 
-- `frontend`: portal cliente y backoffice en Next.js.
-- `backend`: API Go con endpoints iniciales y datos demo.
-- `postgres`: base de datos para el producto.
-- `redis`: colas y workers.
-- `asterisk`: PBX con ARI, SIP y RTP preparados.
-- `backend/migrations`: primer esquema SQL.
+- `frontend`: portal cliente y backoffice en Next.js 16 (client components, login JWT, drawer de llamada de prueba, toasts).
+- `backend`: API Go con `pgx/v5`, migrations runner, JWT HS256 + bcrypt, middleware de tenant, cliente ARI con Originate y loop de eventos.
+- `postgres`: persistencia real con schema multi-tenant, indices por `tenant_id` y tabla `schema_migrations`.
+- `redis`: definido en compose para colas/workers (todavia sin worker activo).
+- `asterisk`: PBX con ARI, SIP, RTP, dialplan `callhub-test`/`9000` y plantilla de trunk SIP comentada.
+- `backend/migrations`: `001_init.sql` (schema completo) y `002_seed.sql` (tenants demo). Los usuarios bootstrap se crean en codigo en el primer arranque.
 - `docs/deploy-coolify.md`: guia de despliegue en Coolify.
 
 ## Arquitectura propuesta
@@ -132,47 +132,177 @@ Despues:
 
 ## Siguiente paso tecnico
 
-El siguiente paso tecnico es conectar persistencia real y llamadas:
+Hecho en esta iteracion:
 
-- aplicar migraciones en Postgres
-- reemplazar datos demo por queries reales
-- implementar autenticacion y `tenant_id`
-- conectar el worker con Asterisk ARI
-- crear `voice-agent` para audio realtime
+- Migraciones aplicadas en Postgres con runner propio (`schema_migrations`).
+- Store SQL con `pgx/v5`, filtrado por `tenant_id` en todas las queries.
+- Auth JWT HS256 + bcrypt, middleware `requireAuth`/`requireRole`, login UI y persistencia de sesion en `localStorage`.
+- Multi-tenancy: cada usuario lleva `tenantId` en sus claims; los `platform_admin` pueden suplantar tenant via selector en la sidebar y query param `?tenant=`.
+- Cliente ARI con `Originate` y loop de eventos en WebSocket (`StasisStart`, `ChannelDestroyed`, etc.) que persiste duracion y outcome.
+- `POST /api/calls/test` ahora origina canal real cuando `ASTERISK_ARI_ENABLED=true`; si no, registra la llamada en Postgres como queued.
+- Trunk SIP configurable via `SIP_TRUNK_ENDPOINT=PJSIP/{phone}@trunk`. Plantilla comentada en `asterisk/etc/asterisk/pjsip.conf`.
+
+Pendiente (fase 4):
+
+- Worker que consume llamadas en cola de Redis y respeta horario/intentos.
+- `voice-agent` para External Media (audio realtime) con OpenAI Realtime o pipeline ASR/LLM/TTS.
+- Persistencia de transcripts (`transcripts` ya existe en schema).
+- Tests de integracion (DB con `testcontainers`, mock ARI).
 
 ## Desarrollo local
 
-Backend:
+```bash
+cp .env.example .env
+# Edita .env: pon un JWT_SECRET largo y aleatorio (`openssl rand -base64 48`)
+docker compose up --build
+```
+
+Servicios:
+
+- Frontend: <http://localhost:3000> (redirige a `/login`)
+- Backend health: <http://localhost:8080/healthz>
+- Asterisk ARI: <http://localhost:8088/ari>
+
+Credenciales de bootstrap (creadas la primera vez que el backend arranca contra una DB vacia):
+
+- `admin@callhub.local` / `atrium123` (rol `platform_admin`, ve `/admin`)
+- `owner@atrium.local` / `atrium123` (rol `tenant_admin`, scopeado al tenant `atrium`)
+
+Cambialos via `BOOTSTRAP_*_PASSWORD` en `.env` antes del primer arranque o creando otros usuarios manualmente.
+
+### Solo backend
 
 ```bash
 cd backend
-go test ./...
+DATABASE_URL=postgres://atrium:change-me@localhost:5432/atrium_calls?sslmode=disable \
+JWT_SECRET=$(openssl rand -base64 48) \
 go run ./cmd/api
 ```
 
-Frontend:
+### Solo frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev
+NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
 ```
 
-Docker Compose:
+## Trunks SIP y DIDs
+
+La configuracion telefonica vive en dos sitios complementarios:
+
+1. **Credenciales SIP** en `asterisk/etc/asterisk/pjsip.conf` (host del proveedor, usuario, password). Asterisk las carga al arrancar.
+2. **Metadata y enrutamiento** en Postgres, gestionada desde `/admin/trunks` (rol `platform_admin`):
+   - **Trunks**: cada fila apunta a un endpoint PJSIP por nombre (`asteriskEndpoint`, p.ej. `twilio-eu`). Es la metadata visible para el admin (proveedor, host de display, notas, contador de DIDs).
+   - **DIDs**: numeros E.164 asociados a un trunk. El admin los asigna a un tenant o los deja en el pool global.
+3. **Asignacion en el tenant**: el cliente entra en `/portal/bots` y elige que DID usa cada bot. Sin DID asignado el bot solo puede marcar a la extension sandbox interna.
+
+Cuando un tenant lanza una llamada con un bot, el backend resuelve `bot.didId → did.trunkId → trunk.asteriskEndpoint` y origina via ARI como `PJSIP/{phone}@{asteriskEndpoint}` usando el E.164 del DID como caller-id.
+
+Para añadir un proveedor real:
+
+1. Pega los bloques `[endpoint]`, `[auth]`, `[aor]`, `[identify]` en `pjsip.conf` (hay plantilla comentada con tres ejemplos en el archivo) y reinicia el contenedor Asterisk.
+2. Como `platform_admin`, en `/admin/trunks` → **Nuevo trunk**, pon el mismo `name` del bloque como `Endpoint Asterisk`.
+3. En la pestaña DIDs añade los numeros (E.164) que te dio el proveedor y asignalos al tenant correspondiente.
+4. El cliente entra como `tenant_admin`, abre `/portal/bots` y selecciona el DID en cada bot.
+
+## Probar una llamada de prueba
+
+1. Levanta el stack con `docker compose up --build`.
+2. Login en `http://localhost:3000` con `owner@atrium.local` / `atrium123`.
+3. Dashboard → **Llamada de prueba** → escribe un numero, opcionalmente elige un bot, lanza.
+4. Si `ASTERISK_ARI_ENABLED=false` (default), la llamada queda en Postgres como `queued` (valida persistencia).
+5. Si `ASTERISK_ARI_ENABLED=true`:
+   - Sin bot: hace `Originate` a `PJSIP/6001` (registra un softphone tipo Zoiper en `localhost:5060` user `6001` pass `change-me` para contestar).
+   - Con bot que tiene DID asignado: hace `Originate` a `PJSIP/{phone}@{trunkEndpoint}` con el DID como caller-id.
+
+## Despliegue (Coolify + Traefik)
+
+El repo está preparado para deployarse en Coolify detrás de Traefik. La configuración usa labels condicionales (`TRAEFIK_ENABLE=true`) para no estorbar al desarrollo local.
+
+### Servicios públicos (vía Traefik)
+
+| Servicio | Host por defecto | Puerto interno | Propósito |
+|---|---|---|---|
+| `frontend` | `${FRONTEND_HOST}` | 3000 | Portal Next.js |
+| `backend` | `${BACKEND_HOST}` | 8080 | API REST/JSON |
+| `voice-agent` | `${VOICE_AGENT_HOST}` | 8090 | HTTP + WebSocket de sesiones |
+| `minio` | `${MINIO_HOST}` | 9000 | Recordings (presigned URLs públicas) |
+
+Traefik termina TLS, hace HTTP↔HTTPS y emite certs Let's Encrypt automáticamente cuando Coolify lo gestiona.
+
+### Servicios internos (no expuestos)
+
+- `postgres` — datos
+- `redis` — colas/futuro
+- `asterisk` — PBX (puertos UDP directos al host, **no** detrás de Traefik porque SIP/RTP son UDP)
+
+### Puertos UDP directos
+
+Traefik no proxea UDP. Asterisk y el voice-agent abren puertos UDP directos al host:
+
+| Servicio | Puertos UDP | Para qué |
+|---|---|---|
+| asterisk | 5060 | SIP signaling |
+| asterisk | 10000-10020 | RTP audio del proveedor SIP |
+| voice-agent | 12000-12099 | RTP audio del External Media de Asterisk |
+
+En Coolify abre estos rangos en el firewall del nodo.
+
+### Variables clave para Coolify
 
 ```bash
-cp .env.example .env
-docker compose up --build
+# Habilita los Traefik labels
+TRAEFIK_ENABLE=true
+
+# Hosts públicos
+FRONTEND_HOST=portal.tudominio.com
+BACKEND_HOST=api.tudominio.com
+VOICE_AGENT_HOST=voice.tudominio.com
+MINIO_HOST=storage.tudominio.com
+
+# Builds: el frontend bakea NEXT_PUBLIC_API_URL en build time
+NEXT_PUBLIC_API_URL=https://api.tudominio.com
+
+# CORS del backend debe coincidir con el host del frontend
+ALLOWED_ORIGINS=https://portal.tudominio.com
+
+# Storage público accesible (URL que verá el navegador)
+STORAGE_PUBLIC_URL=https://storage.tudominio.com
+
+# Hostname/IP que Asterisk usa para llegar al voice-agent (RTP)
+# Si Asterisk corre en el mismo node, "voice-agent" funciona (nombre del servicio).
+# Si Asterisk corre fuera, usa la IP pública del nodo.
+RTP_ADVERTISE_HOST=voice-agent
+
+# Producción: generar secretos largos
+JWT_SECRET=$(openssl rand -base64 48)
+VOICE_AGENT_SHARED_SECRET=$(openssl rand -base64 32)
+STORAGE_SECRET_KEY=$(openssl rand -base64 32)
+BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -base64 24)
+BOOTSTRAP_TENANT_PASSWORD=$(openssl rand -base64 24)
 ```
 
-Servicios por defecto:
+### Pasos en Coolify
 
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:8080/healthz`
-- Asterisk ARI: `http://localhost:8088/ari`
+1. **Nueva aplicación** → Source: Git repository → URL: `https://github.com/Smartgroup10/timbreAI`
+2. **Build pack**: Docker Compose
+3. **Compose file**: `docker-compose.yml`
+4. **Environment**: pega las variables de la sección anterior
+5. **Domains**: añade los 4 hostnames a sus servicios respectivos
+6. **Deploy**
 
-## Despliegue
+El primer arranque corre las migraciones (007 archivos `.sql`) y crea los usuarios bootstrap. Login con `admin@callhub.local` y la password que pusiste.
 
-La primera opcion recomendada es subir el repo a GitHub y desplegarlo en el VPS con Coolify usando Docker Compose.
+### Healthchecks
 
-Ver [docs/deploy-coolify.md](docs/deploy-coolify.md).
+Todos los servicios tienen healthcheck. Coolify los respeta para el rolling deploy:
+
+- backend: `GET /healthz`
+- voice-agent: `GET /healthz`
+- frontend: `GET /` (spider)
+- postgres: `pg_isready`
+- redis: `redis-cli ping`
+- minio: `mc ready`
+
+Ver más detalle en [docs/deploy-coolify.md](docs/deploy-coolify.md).

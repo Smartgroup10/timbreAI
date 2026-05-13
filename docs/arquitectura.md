@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Construir un sistema de llamadas con IA para Atrium, soportando:
+Construir un sistema de llamadas con IA multi-tenant (CallHub), soportando:
 
 - Llamadas a personas interesadas en rentar una propiedad.
 - Llamadas comerciales a propietarios/leads para explicar el servicio.
@@ -17,7 +17,7 @@ Asterisk no deberia contener la logica de negocio. Su responsabilidad es telefon
 
 ## Flujo: interesado en rentar
 
-1. El lead entra desde formulario, CRM o Atrium.
+1. El lead entra desde formulario, CRM o sistema del tenant (p.ej. Atrium).
 2. El backend valida telefono, consentimiento, propiedad y horario permitido.
 3. Se crea una tarea de llamada.
 4. El worker pide a Asterisk originar la llamada.
@@ -30,7 +30,7 @@ Asterisk no deberia contener la logica de negocio. Su responsabilidad es telefon
 
 1. El lead propietario existe en CRM con base legal/consentimiento.
 2. El worker llama dentro de horarios y limites configurados.
-3. La IA se presenta, explica Atrium y pregunta si tiene sentido hablar.
+3. La IA se presenta, explica el servicio del tenant y pregunta si tiene sentido hablar.
 4. Si hay interes, califica propiedad y agenda llamada humana.
 5. Si pide no recibir llamadas, se bloquea el numero.
 

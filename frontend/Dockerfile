@@ -1,10 +1,13 @@
 FROM node:22-alpine AS deps
 
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
 
 FROM node:22-alpine AS build
+
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

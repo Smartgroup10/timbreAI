@@ -12,3 +12,6 @@ tmp/
 data/
 bin/
 .gocache/
+
+# Claude Code session data (worktrees, memory, sandboxes)
+.claude/
