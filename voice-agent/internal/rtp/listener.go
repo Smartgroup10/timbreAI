@@ -84,6 +84,26 @@ func (l *Listener) Run(ctx context.Context, audioIn chan<- []byte, audioOut <-ch
 
 func (l *Listener) readLoop(ctx context.Context, audioIn chan<- []byte) {
 	buf := make([]byte, 2048)
+	// Stats periódicas para diagnosticar problemas tipo "el primer paquete llega
+	// y luego silencio" o "el provider está congestionado y droppeamos todo".
+	var pktTotal, pktForwarded, pktDropped uint64
+	statTick := time.NewTicker(5 * time.Second)
+	defer statTick.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-statTick.C:
+				if pktTotal == 0 {
+					continue
+				}
+				l.logger.Info("rtp stats", "port", l.port,
+					"received", pktTotal, "forwarded", pktForwarded, "dropped", pktDropped)
+			}
+		}
+	}()
+
 	for {
 		if ctx.Err() != nil {
 			return
@@ -105,6 +125,7 @@ func (l *Listener) readLoop(ctx context.Context, audioIn chan<- []byte) {
 		if n < 12 {
 			continue
 		}
+		pktTotal++
 		// First packet: learn remote address + payload type.
 		l.mu.Lock()
 		if l.remoteAddr == nil {
@@ -131,11 +152,13 @@ func (l *Listener) readLoop(ctx context.Context, audioIn chan<- []byte) {
 		copy(cp, payload)
 		select {
 		case audioIn <- cp:
+			pktForwarded++
 		case <-ctx.Done():
 			return
 		default:
 			// Drop if downstream isn't keeping up. Audio in chan has buffer; if it's full we're
 			// already in trouble — better to discard than to block the read loop.
+			pktDropped++
 		}
 	}
 }

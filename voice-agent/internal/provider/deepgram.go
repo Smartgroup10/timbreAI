@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -101,16 +102,36 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 	emit(s, session.Event{Type: "status", State: "ready"})
 
 	// Goroutine: pump caller audio (binary PCM16) to Deepgram.
+	// Contadores para diagnosticar "Deepgram dice CLIENT_MESSAGE_TIMEOUT" —
+	// si chunks=0 sabemos que el problema está aguas arriba (RTP listener
+	// o Asterisk no manda); si chunks>0 pero Deepgram se queja, el problema
+	// es de formato/sample-rate.
 	go func() {
+		var chunks, bytesTotal uint64
+		var writeErrs uint64
+		statTick := time.NewTicker(5 * time.Second)
+		defer statTick.Stop()
 		for {
 			select {
 			case <-ctx.Done():
+				d.logger.Info("deepgram pump exit", "session", s.ID,
+					"chunks_sent", chunks, "bytes", bytesTotal, "write_errors", writeErrs)
 				return
+			case <-statTick.C:
+				if chunks > 0 || writeErrs > 0 {
+					d.logger.Info("deepgram pump stats", "session", s.ID,
+						"chunks_sent", chunks, "bytes", bytesTotal, "write_errors", writeErrs)
+				}
 			case chunk, ok := <-s.AudioIn:
 				if !ok {
 					return
 				}
-				_ = conn.Write(ctx, websocket.MessageBinary, chunk)
+				if err := conn.Write(ctx, websocket.MessageBinary, chunk); err != nil {
+					writeErrs++
+				} else {
+					chunks++
+					bytesTotal += uint64(len(chunk))
+				}
 			}
 		}
 	}()
