@@ -157,10 +157,18 @@ services:
       - asterisk_spool:/var/spool/asterisk
       - asterisk_logs:/var/log/asterisk
     ports:
-      # SIP signaling — abre solo si vas a recibir inbound desde un proveedor SIP.
-      - "${ASTERISK_SIP_PORT:-5060}:5060/udp"
-      # RTP del trunk (audio del proveedor SIP).
+      # RTP del trunk SIP (audio entrante/saliente del proveedor). Siempre necesario.
       - "${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10020}:10000-10020/udp"
+      # SIP signaling (5060/udp) NO se mapea por defecto. Outbound funciona sin él
+      # porque Asterisk inicia la conexión hacia el trunk. Si vas a recibir inbound,
+      # crea un docker-compose.override.yml con:
+      #
+      #   services:
+      #     asterisk:
+      #       ports:
+      #         - "5060:5060/udp"
+      #
+      # o mapéalo a otro puerto del host (ej. "5070:5060/udp") si 5060 está ocupado.
 
 volumes:
   postgres_data:
