@@ -351,7 +351,8 @@ export const api = {
   myDIDs: (tenantOverride?: string) => request<DID[]>("GET", withTenant("/api/dids", tenantOverride)),
 
   campaigns: (tenantOverride?: string) => request<Campaign[]>("GET", withTenant("/api/campaigns", tenantOverride)),
-  createCampaign: (input: Partial<Campaign>) => request<Campaign>("POST", "/api/campaigns", input),
+  createCampaign: (input: Partial<Campaign>, tenantOverride?: string) =>
+    request<Campaign>("POST", withTenant("/api/campaigns", tenantOverride), input),
   updateCampaign: (id: string, patch: Partial<Campaign>, tenantOverride?: string) =>
     request<Campaign>("PATCH", withTenant(`/api/campaigns/${encodeURIComponent(id)}`, tenantOverride), patch),
   deleteCampaign: (id: string, tenantOverride?: string) =>

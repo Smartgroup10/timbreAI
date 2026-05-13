@@ -36,7 +36,7 @@ export default function CampaignsPage() {
 
   async function handleCreate(input: Partial<Campaign>) {
     try {
-      await api.createCampaign(input);
+      await api.createCampaign(input, tenant);
       toast.push("Campaña creada", "success");
       setFormOpen(false);
       campaigns.reload();
