@@ -161,7 +161,7 @@ services:
       - "8088"
     ports:
       # RTP del trunk SIP — UDP directo al host (Traefik no rutea UDP).
-      - "${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10020}:10000-10020/udp"
+      - "${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10020}:${ASTERISK_RTP_START:-10000}-${ASTERISK_RTP_END:-10020}/udp"
       # SIP signaling (5060/udp) NO se mapea por defecto. Outbound no lo requiere.
       # Para inbound: añade un docker-compose.override.yml o mapea desde Coolify
       # con un puerto del host libre (ej. "5070:5060/udp").
