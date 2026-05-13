@@ -1,16 +1,11 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"sync"
-	"time"
 
 	"github.com/coder/websocket"
 
@@ -18,60 +13,94 @@ import (
 	"timbre/voice-agent/internal/session"
 )
 
-// Deepgram composes three services to form a full voice agent:
-//   1. ASR: Deepgram Live (WebSocket) - audio in → transcripts
-//   2. LLM: OpenAI Chat Completions (HTTP) - text → text
-//   3. TTS: Deepgram Aura (HTTP) - text → audio
+// Deepgram talks to the Voice Agent WebSocket API end-to-end:
+//   wss://agent.deepgram.com/v1/agent/converse
 //
-// Each user turn (final transcript) triggers an LLM call, whose response is synthesized and
-// piped back as audio to the caller.
+// One socket does everything: listen (ASR), think (LLM hosted by Deepgram pointing at any vendor
+// model), speak (TTS via Aura). Input audio is linear16 binary frames; output audio is binary
+// frames at the configured sample rate. JSON text frames carry events (ConversationText,
+// AgentThinking, UserStartedSpeaking, etc).
+//
+// Spec: https://developers.deepgram.com/reference/voice-agent/voice-agent
 type Deepgram struct {
 	cfg    config.DeepgramConfig
 	logger *slog.Logger
-	http   *http.Client
 }
 
 func NewDeepgram(cfg config.DeepgramConfig, logger *slog.Logger) *Deepgram {
-	return &Deepgram{cfg: cfg, logger: logger, http: &http.Client{Timeout: 30 * time.Second}}
+	return &Deepgram{cfg: cfg, logger: logger}
 }
 
 func (d *Deepgram) Name() string { return "deepgram" }
 
+const deepgramSampleRate = 16000
+
 func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
-	// Effective credentials: per-tenant overrides win, fallback to env defaults.
 	apiKey := pick(s.Config.Credentials.DeepgramAPIKey, d.cfg.APIKey)
-	asrModel := pick(s.Config.Credentials.DeepgramASRModel, d.cfg.ASRModel)
-	ttsModel := pick(s.Config.Credentials.DeepgramTTSModel, d.cfg.TTSModel)
-	llmModel := pick(s.Config.Credentials.DeepgramLLMModel, d.cfg.LLMModel)
-	// Deepgram pipeline reuses OpenAI Chat Completions for the LLM step. If the tenant set its
-	// OpenAI key here, use that; otherwise fall back to whatever the agent boot loaded.
-	llmKey := pick(s.Config.Credentials.OpenAIAPIKey, d.cfg.LLMKey)
+	listenModel := pick(s.Config.Credentials.DeepgramListenModel, d.cfg.ListenModel)
+	thinkProvider := pick(s.Config.Credentials.DeepgramThinkProvider, d.cfg.ThinkProvider)
+	thinkModel := pick(s.Config.Credentials.DeepgramThinkModel, d.cfg.ThinkModel)
+	speakModel := pick(s.Config.Credentials.DeepgramSpeakModel, d.cfg.SpeakModel)
+	greeting := pick(s.Config.Credentials.DeepgramGreeting, d.cfg.Greeting)
 
 	if apiKey == "" {
 		emit(s, session.Event{Type: "error", Message: "deepgram api key not configured (tenant or env)"})
 		return ErrNotConfigured
 	}
-	if llmKey == "" {
-		emit(s, session.Event{Type: "error", Message: "deepgram llm key not configured"})
-		return ErrNotConfigured
-	}
 
-	conv := newConversation(SystemPrompt(s.Config))
-
-	// 1) Open ASR live socket.
-	asrURL := buildDeepgramASRURL(asrModel, s.Config.Language)
 	headers := http.Header{}
 	headers.Set("Authorization", "Token "+apiKey)
-	conn, _, err := websocket.Dial(ctx, asrURL, &websocket.DialOptions{HTTPHeader: headers})
+	conn, _, err := websocket.Dial(ctx, "wss://agent.deepgram.com/v1/agent/converse",
+		&websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
 		emit(s, session.Event{Type: "error", Message: "deepgram_dial: " + err.Error()})
-		return fmt.Errorf("deepgram dial: %w", err)
+		return fmt.Errorf("deepgram voice agent dial: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
 
+	// Settings: full agent configuration in a single message.
+	settings := map[string]any{
+		"type": "Settings",
+		"audio": map[string]any{
+			"input": map[string]any{
+				"encoding":    "linear16",
+				"sample_rate": deepgramSampleRate,
+			},
+			"output": map[string]any{
+				"encoding":    "linear16",
+				"sample_rate": deepgramSampleRate,
+				"container":   "none",
+			},
+		},
+		"agent": map[string]any{
+			"listen": map[string]any{
+				"provider": map[string]any{
+					"type":  "deepgram",
+					"model": listenModel,
+				},
+			},
+			"think": map[string]any{
+				"provider": map[string]any{
+					"type":  thinkProvider,
+					"model": thinkModel,
+				},
+				"prompt": SystemPrompt(s.Config),
+			},
+			"speak": map[string]any{
+				"provider": map[string]any{
+					"type":  "deepgram",
+					"model": speakModel,
+				},
+			},
+			"greeting": greeting,
+		},
+	}
+	if err := writeJSON(ctx, conn, settings); err != nil {
+		return err
+	}
 	emit(s, session.Event{Type: "status", State: "ready"})
 
-	// 2) Pump audio frames to Deepgram ASR.
+	// Goroutine: pump caller audio (binary PCM16) to Deepgram.
 	go func() {
 		for {
 			select {
@@ -79,7 +108,6 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 				return
 			case chunk, ok := <-s.AudioIn:
 				if !ok {
-					_ = conn.Write(ctx, websocket.MessageText, []byte(`{"type":"CloseStream"}`))
 					return
 				}
 				_ = conn.Write(ctx, websocket.MessageBinary, chunk)
@@ -87,203 +115,74 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 		}
 	}()
 
-	// 3) Read transcripts; on each final, dispatch to LLM → TTS pipeline.
-	var (
-		pipelineMu sync.Mutex
-	)
+	// Main loop: read both binary audio frames (agent speaking) and text events (transcripts,
+	// status changes).
 	for {
-		_, raw, err := conn.Read(ctx)
+		msgType, raw, err := conn.Read(ctx)
 		if err != nil {
 			return err
 		}
-		var msg deepgramASRMessage
-		if err := json.Unmarshal(raw, &msg); err != nil {
-			continue
-		}
-		if msg.Type == "Results" {
-			text := msg.Transcript()
-			if text == "" {
-				continue
+		switch msgType {
+		case websocket.MessageBinary:
+			// Agent audio chunk — forward straight to the session out channel.
+			cp := make([]byte, len(raw))
+			copy(cp, raw)
+			select {
+			case s.AudioOut <- cp:
+			case <-ctx.Done():
+				return ctx.Err()
 			}
-			if !msg.IsFinal {
-				emit(s, session.Event{Type: "transcript", Role: "user", Text: text, Final: false})
-				continue
-			}
-			emit(s, session.Event{Type: "transcript", Role: "user", Text: text, Final: true})
-			s.AppendTranscript("user", text)
-			conv.Add("user", text)
-
-			// Serialize pipeline turns: only one LLM+TTS at a time. New finals during a response
-			// could implement barge-in by cancelling the running TTS — left as future work.
-			go func(turn []chatMessage) {
-				pipelineMu.Lock()
-				defer pipelineMu.Unlock()
-				emit(s, session.Event{Type: "status", State: "thinking"})
-				reply, err := d.completeLLM(ctx, turn, llmKey, llmModel)
-				if err != nil {
-					d.logger.Warn("deepgram llm", "error", err)
-					emit(s, session.Event{Type: "error", Message: "llm: " + err.Error()})
-					return
-				}
-				conv.Add("assistant", reply)
-				emit(s, session.Event{Type: "transcript", Role: "agent", Text: reply, Final: true})
-				s.AppendTranscript("agent", reply)
-
-				emit(s, session.Event{Type: "status", State: "speaking"})
-				audio, err := d.synthesize(ctx, reply, apiKey, ttsModel)
-				if err != nil {
-					d.logger.Warn("deepgram tts", "error", err)
-					emit(s, session.Event{Type: "error", Message: "tts: " + err.Error()})
-					return
-				}
-				select {
-				case s.AudioOut <- audio:
-				case <-ctx.Done():
-				}
-				emit(s, session.Event{Type: "status", State: "listening"})
-			}(conv.Snapshot())
+		case websocket.MessageText:
+			d.handleEvent(raw, s)
 		}
 	}
 }
 
-func buildDeepgramASRURL(model, language string) string {
-	u, _ := url.Parse("wss://api.deepgram.com/v1/listen")
-	q := u.Query()
-	q.Set("model", model)
-	q.Set("encoding", "linear16")
-	q.Set("sample_rate", "16000")
-	q.Set("channels", "1")
-	q.Set("smart_format", "true")
-	q.Set("interim_results", "true")
-	q.Set("vad_events", "true")
-	q.Set("endpointing", "400")
-	if language != "" {
-		q.Set("language", language)
+func (d *Deepgram) handleEvent(raw []byte, s *session.Session) {
+	var probe struct {
+		Type string `json:"type"`
 	}
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-type deepgramASRMessage struct {
-	Type    string `json:"type"`
-	IsFinal bool   `json:"is_final"`
-	Channel struct {
-		Alternatives []struct {
-			Transcript string `json:"transcript"`
-		} `json:"alternatives"`
-	} `json:"channel"`
-}
-
-func (m deepgramASRMessage) Transcript() string {
-	if len(m.Channel.Alternatives) > 0 {
-		return m.Channel.Alternatives[0].Transcript
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return
 	}
-	return ""
-}
-
-// completeLLM calls the configured chat completion endpoint with the running conversation.
-// Key/model are passed explicitly so per-tenant overrides take effect.
-func (d *Deepgram) completeLLM(ctx context.Context, messages []chatMessage, apiKey, model string) (string, error) {
-	body, _ := json.Marshal(map[string]any{
-		"model":    model,
-		"messages": messages,
-		"stream":   false,
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.cfg.LLMURL, bytes.NewReader(body))
-	if err != nil {
-		return "", err
+	switch probe.Type {
+	case "Welcome", "SettingsApplied":
+		// no-op; could surface as status if we wanted
+	case "UserStartedSpeaking":
+		emit(s, session.Event{Type: "status", State: "listening"})
+	case "AgentThinking":
+		emit(s, session.Event{Type: "status", State: "thinking"})
+	case "AgentStartedSpeaking":
+		emit(s, session.Event{Type: "status", State: "speaking"})
+	case "AgentAudioDone":
+		emit(s, session.Event{Type: "status", State: "listening"})
+	case "ConversationText":
+		// { role: "user" | "assistant", content: "..." }
+		var ev struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(raw, &ev); err == nil && ev.Content != "" {
+			out := "agent"
+			if ev.Role == "user" {
+				out = "user"
+			}
+			emit(s, session.Event{Type: "transcript", Role: out, Text: ev.Content, Final: true})
+			s.AppendTranscript(out, ev.Content)
+		}
+	case "Error":
+		var ev struct {
+			Description string `json:"description"`
+			Code        string `json:"code"`
+		}
+		_ = json.Unmarshal(raw, &ev)
+		d.logger.Warn("deepgram agent error", "code", ev.Code, "desc", ev.Description)
+		emit(s, session.Event{Type: "error", Message: ev.Description})
+	case "Warning":
+		var ev struct {
+			Description string `json:"description"`
+		}
+		_ = json.Unmarshal(raw, &ev)
+		d.logger.Info("deepgram agent warning", "desc", ev.Description)
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := d.http.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("llm %d: %s", resp.StatusCode, string(respBody))
-	}
-	var parsed chatCompletionResponse
-	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return "", err
-	}
-	if len(parsed.Choices) == 0 {
-		return "", fmt.Errorf("empty llm response")
-	}
-	return parsed.Choices[0].Message.Content, nil
-}
-
-// synthesize calls Deepgram Aura with the agent's text and returns PCM16 audio bytes.
-// API key and TTS model come from the caller so per-tenant overrides apply.
-func (d *Deepgram) synthesize(ctx context.Context, text, apiKey, ttsModel string) ([]byte, error) {
-	u, _ := url.Parse("https://api.deepgram.com/v1/speak")
-	q := u.Query()
-	q.Set("model", ttsModel)
-	q.Set("encoding", "linear16")
-	q.Set("sample_rate", "16000")
-	u.RawQuery = q.Encode()
-
-	body, _ := json.Marshal(map[string]string{"text": text})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Token "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := d.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("tts %d: %s", resp.StatusCode, string(b))
-	}
-	return io.ReadAll(resp.Body)
-}
-
-// chatMessage is the OpenAI-compatible message shape used by both Deepgram and AssemblyAI pipelines.
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type chatCompletionResponse struct {
-	Choices []struct {
-		Message chatMessage `json:"message"`
-	} `json:"choices"`
-}
-
-// conversation keeps a bounded LLM history with the system prompt always pinned.
-type conversation struct {
-	mu       sync.Mutex
-	messages []chatMessage
-	maxTurns int
-}
-
-func newConversation(systemPrompt string) *conversation {
-	return &conversation{
-		messages: []chatMessage{{Role: "system", Content: systemPrompt}},
-		maxTurns: 16, // keep history small to control LLM cost
-	}
-}
-
-func (c *conversation) Add(role, content string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.messages = append(c.messages, chatMessage{Role: role, Content: content})
-	// Truncate non-system messages.
-	if len(c.messages) > c.maxTurns+1 {
-		kept := append([]chatMessage{c.messages[0]}, c.messages[len(c.messages)-c.maxTurns:]...)
-		c.messages = kept
-	}
-}
-
-func (c *conversation) Snapshot() []chatMessage {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	out := make([]chatMessage, len(c.messages))
-	copy(out, c.messages)
-	return out
 }

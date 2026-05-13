@@ -608,28 +608,29 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
           setField={setField}
         />
         <ProviderBlock
-          title="Deepgram"
-          subtitle="Nova-3 ASR + LLM (OpenAI por defecto) + Aura TTS."
+          title="Deepgram Voice Agent"
+          subtitle="wss://agent.deepgram.com — listen + think + speak en un único socket."
           c={c}
           draft={draft}
           fields={[
             { key: "deepgramApiKey", label: "API key Deepgram", type: "password", placeholder: "..." },
-            { key: "deepgramAsrModel", label: "Modelo ASR", placeholder: "nova-3" },
-            { key: "deepgramTtsModel", label: "Modelo TTS (Aura)", placeholder: "aura-asteria-en" },
-            { key: "deepgramLlmModel", label: "Modelo LLM", placeholder: "gpt-4o-mini" },
+            { key: "deepgramListenModel", label: "Modelo Listen (ASR)", placeholder: "nova-3" },
+            { key: "deepgramThinkProvider", label: "Provider LLM", placeholder: "open_ai · anthropic · ..." },
+            { key: "deepgramThinkModel", label: "Modelo LLM", placeholder: "gpt-4o-mini" },
+            { key: "deepgramSpeakModel", label: "Modelo Speak (TTS)", placeholder: "aura-asteria-en" },
+            { key: "deepgramGreeting", label: "Saludo inicial (opcional)", placeholder: "Hola, soy el asistente..." },
           ]}
           setField={setField}
         />
         <ProviderBlock
-          title="AssemblyAI"
-          subtitle="Universal Streaming ASR + LLM + TTS via OpenAI."
+          title="AssemblyAI Voice Agent"
+          subtitle="wss://agents.assemblyai.com — LLM y TTS hospedados por AssemblyAI."
           c={c}
           draft={draft}
           fields={[
             { key: "assemblyaiApiKey", label: "API key AssemblyAI", type: "password", placeholder: "..." },
-            { key: "assemblyaiLlmModel", label: "Modelo LLM", placeholder: "gpt-4o-mini" },
-            { key: "assemblyaiTtsModel", label: "Modelo TTS", placeholder: "gpt-4o-mini-tts" },
-            { key: "assemblyaiTtsVoice", label: "Voz TTS", placeholder: "alloy" },
+            { key: "assemblyaiVoice", label: "Voz", placeholder: "ivy · james · tyler" },
+            { key: "assemblyaiGreeting", label: "Saludo inicial (opcional)", placeholder: "Hola, soy el asistente..." },
           ]}
           setField={setField}
         />

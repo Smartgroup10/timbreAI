@@ -32,24 +32,23 @@ type OpenAIConfig struct {
 	Voice  string
 }
 
+// DeepgramConfig drives the Voice Agent socket (wss://agent.deepgram.com/v1/agent/converse).
+// Deepgram orchestrates ASR + LLM + TTS internally; we only specify which models to use.
 type DeepgramConfig struct {
-	APIKey   string
-	ASRModel string
-	TTSModel string
-	LLMURL   string // Reuses OpenAI Chat Completions; falls back to OPENAI_API_KEY.
-	LLMKey   string
-	LLMModel string
+	APIKey         string
+	ListenModel    string // ASR — nova-3, flux-general-en, ...
+	ThinkProvider  string // open_ai, anthropic, ... (the LLM vendor Deepgram should call)
+	ThinkModel     string // gpt-4o-mini, claude-3-5-sonnet-latest, ...
+	SpeakModel     string // aura-asteria-en, ...
+	Greeting       string
 }
 
+// AssemblyAIConfig drives the Voice Agent socket (wss://agents.assemblyai.com/v1/ws).
+// AssemblyAI hosts the LLM + TTS internally — we just pick the voice.
 type AssemblyAIConfig struct {
 	APIKey   string
-	LLMURL   string
-	LLMKey   string
-	LLMModel string
-	TTSURL   string // Defaults to OpenAI speech endpoint.
-	TTSKey   string
-	TTSModel string
-	TTSVoice string
+	Voice    string // ivy, james, tyler, ...
+	Greeting string
 }
 
 func Load() (Config, error) {
@@ -73,24 +72,20 @@ func Load() (Config, error) {
 			Voice:  env("OPENAI_REALTIME_VOICE", "alloy"),
 		},
 		Deepgram: DeepgramConfig{
-			APIKey:   env("DEEPGRAM_API_KEY", ""),
-			ASRModel: env("DEEPGRAM_ASR_MODEL", "nova-3"),
-			TTSModel: env("DEEPGRAM_TTS_MODEL", "aura-asteria-en"),
-			LLMURL:   env("DEEPGRAM_LLM_URL", "https://api.openai.com/v1/chat/completions"),
-			LLMKey:   firstNonEmpty(env("DEEPGRAM_LLM_KEY", ""), openaiKey),
-			LLMModel: env("DEEPGRAM_LLM_MODEL", "gpt-4o-mini"),
+			APIKey:        env("DEEPGRAM_API_KEY", ""),
+			ListenModel:   env("DEEPGRAM_LISTEN_MODEL", "nova-3"),
+			ThinkProvider: env("DEEPGRAM_THINK_PROVIDER", "open_ai"),
+			ThinkModel:    env("DEEPGRAM_THINK_MODEL", "gpt-4o-mini"),
+			SpeakModel:    env("DEEPGRAM_SPEAK_MODEL", "aura-asteria-en"),
+			Greeting:      env("DEEPGRAM_GREETING", ""),
 		},
 		AssemblyAI: AssemblyAIConfig{
 			APIKey:   env("ASSEMBLYAI_API_KEY", ""),
-			LLMURL:   env("ASSEMBLYAI_LLM_URL", "https://api.openai.com/v1/chat/completions"),
-			LLMKey:   firstNonEmpty(env("ASSEMBLYAI_LLM_KEY", ""), openaiKey),
-			LLMModel: env("ASSEMBLYAI_LLM_MODEL", "gpt-4o-mini"),
-			TTSURL:   env("ASSEMBLYAI_TTS_URL", "https://api.openai.com/v1/audio/speech"),
-			TTSKey:   firstNonEmpty(env("ASSEMBLYAI_TTS_KEY", ""), openaiKey),
-			TTSModel: env("ASSEMBLYAI_TTS_MODEL", "gpt-4o-mini-tts"),
-			TTSVoice: env("ASSEMBLYAI_TTS_VOICE", "alloy"),
+			Voice:    env("ASSEMBLYAI_VOICE", "ivy"),
+			Greeting: env("ASSEMBLYAI_GREETING", ""),
 		},
 	}
+	_ = openaiKey // OpenAI key still consumed by the OpenAI provider via cfg.OpenAI.APIKey.
 
 	if cfg.Port == "" {
 		return cfg, errors.New("VOICE_AGENT_PORT required")

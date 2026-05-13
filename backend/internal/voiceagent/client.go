@@ -47,14 +47,17 @@ type Credentials struct {
 	OpenAIAPIKey        string `json:"openaiApiKey,omitempty"`
 	OpenAIRealtimeModel string `json:"openaiRealtimeModel,omitempty"`
 	OpenAIRealtimeVoice string `json:"openaiRealtimeVoice,omitempty"`
-	DeepgramAPIKey      string `json:"deepgramApiKey,omitempty"`
-	DeepgramASRModel    string `json:"deepgramAsrModel,omitempty"`
-	DeepgramTTSModel    string `json:"deepgramTtsModel,omitempty"`
-	DeepgramLLMModel    string `json:"deepgramLlmModel,omitempty"`
-	AssemblyAIAPIKey    string `json:"assemblyaiApiKey,omitempty"`
-	AssemblyAILLMModel  string `json:"assemblyaiLlmModel,omitempty"`
-	AssemblyAITTSModel  string `json:"assemblyaiTtsModel,omitempty"`
-	AssemblyAITTSVoice  string `json:"assemblyaiTtsVoice,omitempty"`
+
+	DeepgramAPIKey        string `json:"deepgramApiKey,omitempty"`
+	DeepgramListenModel   string `json:"deepgramListenModel,omitempty"`
+	DeepgramThinkProvider string `json:"deepgramThinkProvider,omitempty"`
+	DeepgramThinkModel    string `json:"deepgramThinkModel,omitempty"`
+	DeepgramSpeakModel    string `json:"deepgramSpeakModel,omitempty"`
+	DeepgramGreeting      string `json:"deepgramGreeting,omitempty"`
+
+	AssemblyAIAPIKey   string `json:"assemblyaiApiKey,omitempty"`
+	AssemblyAIVoice    string `json:"assemblyaiVoice,omitempty"`
+	AssemblyAIGreeting string `json:"assemblyaiGreeting,omitempty"`
 }
 
 type Session struct {

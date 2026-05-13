@@ -1,17 +1,12 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"sync"
-	"time"
 
 	"github.com/coder/websocket"
 
@@ -19,64 +14,62 @@ import (
 	"timbre/voice-agent/internal/session"
 )
 
-// AssemblyAI uses AssemblyAI Universal Streaming for ASR, OpenAI Chat Completions for LLM
-// reasoning, and OpenAI's speech endpoint for TTS by default. All three components are pluggable
-// via ASSEMBLYAI_LLM_URL / ASSEMBLYAI_TTS_URL.
+// AssemblyAI talks to the Voice Agent WebSocket API end-to-end:
+//   wss://agents.assemblyai.com/v1/ws
 //
-// Spec: https://www.assemblyai.com/docs/speech-to-text/universal-streaming
+// AssemblyAI hosts ASR + LLM + TTS internally. We pick the voice and pass a system prompt; they
+// drive turn-taking and barge-in semantically. Input/output audio is base64-encoded PCM16
+// embedded in JSON frames (not raw binary like Deepgram).
+//
+// Spec: https://www.assemblyai.com/docs/voice-agents/voice-agent-api
 type AssemblyAI struct {
 	cfg    config.AssemblyAIConfig
 	logger *slog.Logger
-	http   *http.Client
 }
 
 func NewAssemblyAI(cfg config.AssemblyAIConfig, logger *slog.Logger) *AssemblyAI {
-	return &AssemblyAI{cfg: cfg, logger: logger, http: &http.Client{Timeout: 30 * time.Second}}
+	return &AssemblyAI{cfg: cfg, logger: logger}
 }
 
 func (a *AssemblyAI) Name() string { return "assemblyai" }
 
 func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
 	apiKey := pick(s.Config.Credentials.AssemblyAIAPIKey, a.cfg.APIKey)
-	llmModel := pick(s.Config.Credentials.AssemblyAILLMModel, a.cfg.LLMModel)
-	ttsModel := pick(s.Config.Credentials.AssemblyAITTSModel, a.cfg.TTSModel)
-	ttsVoice := pick(s.Config.Credentials.AssemblyAITTSVoice, a.cfg.TTSVoice)
-	// LLM + TTS share OpenAI key by default.
-	llmKey := pick(s.Config.Credentials.OpenAIAPIKey, a.cfg.LLMKey)
-	ttsKey := pick(s.Config.Credentials.OpenAIAPIKey, a.cfg.TTSKey)
+	voice := pick(s.Config.Credentials.AssemblyAIVoice, a.cfg.Voice)
+	greeting := pick(s.Config.Credentials.AssemblyAIGreeting, a.cfg.Greeting)
 
 	if apiKey == "" {
 		emit(s, session.Event{Type: "error", Message: "assemblyai api key not configured (tenant or env)"})
 		return ErrNotConfigured
 	}
-	if llmKey == "" {
-		emit(s, session.Event{Type: "error", Message: "assemblyai llm key not configured"})
-		return ErrNotConfigured
-	}
-
-	conv := newConversation(SystemPrompt(s.Config))
-
-	// AssemblyAI Universal Streaming WebSocket. Auth is via temporary token returned by their
-	// REST API; for simplicity we use the static API key as a header (works for v3 streaming).
-	u, _ := url.Parse("wss://streaming.assemblyai.com/v3/ws")
-	q := u.Query()
-	q.Set("sample_rate", "16000")
-	q.Set("encoding", "pcm_s16le")
-	q.Set("format_turns", "true")
-	u.RawQuery = q.Encode()
 
 	headers := http.Header{}
-	headers.Set("Authorization", apiKey)
-	conn, _, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: headers})
+	headers.Set("Authorization", "Bearer "+apiKey)
+	conn, _, err := websocket.Dial(ctx, "wss://agents.assemblyai.com/v1/ws",
+		&websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
 		emit(s, session.Event{Type: "error", Message: "assemblyai_dial: " + err.Error()})
-		return fmt.Errorf("assemblyai dial: %w", err)
+		return fmt.Errorf("assemblyai voice agent dial: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
 
+	// session.update with everything the agent needs.
+	settings := map[string]any{
+		"type": "session.update",
+		"session": map[string]any{
+			"system_prompt": SystemPrompt(s.Config),
+			"greeting":      greeting,
+			"output": map[string]any{
+				"voice": voice,
+			},
+		},
+	}
+	if err := writeJSON(ctx, conn, settings); err != nil {
+		return err
+	}
 	emit(s, session.Event{Type: "status", State: "ready"})
 
-	// Audio pump: AssemblyAI v3 accepts base64 in JSON or raw binary; we use binary.
+	// Goroutine: pump caller audio to AssemblyAI as base64 in input.audio events.
 	go func() {
 		for {
 			select {
@@ -84,143 +77,83 @@ func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
 				return
 			case chunk, ok := <-s.AudioIn:
 				if !ok {
-					_ = conn.Write(ctx, websocket.MessageText, []byte(`{"type":"Terminate"}`))
 					return
 				}
-				_ = conn.Write(ctx, websocket.MessageBinary, chunk)
+				_ = writeJSON(ctx, conn, map[string]any{
+					"type":  "input.audio",
+					"audio": base64.StdEncoding.EncodeToString(chunk),
+				})
 			}
 		}
 	}()
 
-	var pipelineMu sync.Mutex
+	// Main loop: read JSON events, decode audio replies inline.
 	for {
 		_, raw, err := conn.Read(ctx)
 		if err != nil {
 			return err
 		}
-		var msg assemblyaiMessage
-		if err := json.Unmarshal(raw, &msg); err != nil {
-			continue
+		a.handleEvent(raw, s)
+	}
+}
+
+func (a *AssemblyAI) handleEvent(raw []byte, s *session.Session) {
+	var probe struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return
+	}
+	switch probe.Type {
+	case "session.ready":
+		// {session_id: ...}
+	case "input.speech.started":
+		emit(s, session.Event{Type: "status", State: "listening"})
+	case "input.speech.stopped":
+		emit(s, session.Event{Type: "status", State: "thinking"})
+	case "transcript.user", "transcript.user.delta":
+		var ev struct {
+			Text string `json:"text"`
 		}
-		switch msg.Type {
-		case "Begin":
-			emit(s, session.Event{Type: "status", State: "listening"})
-		case "Turn":
-			if msg.Transcript == "" {
-				continue
+		if err := json.Unmarshal(raw, &ev); err == nil && ev.Text != "" {
+			final := probe.Type == "transcript.user"
+			emit(s, session.Event{Type: "transcript", Role: "user", Text: ev.Text, Final: final})
+			if final {
+				s.AppendTranscript("user", ev.Text)
 			}
-			if !msg.EndOfTurn {
-				emit(s, session.Event{Type: "transcript", Role: "user", Text: msg.Transcript, Final: false})
-				continue
-			}
-			text := msg.Transcript
-			emit(s, session.Event{Type: "transcript", Role: "user", Text: text, Final: true})
-			s.AppendTranscript("user", text)
-			conv.Add("user", text)
-
-			go func(turn []chatMessage) {
-				pipelineMu.Lock()
-				defer pipelineMu.Unlock()
-				emit(s, session.Event{Type: "status", State: "thinking"})
-				reply, err := a.completeLLM(ctx, turn, llmKey, llmModel)
-				if err != nil {
-					a.logger.Warn("assemblyai llm", "error", err)
-					emit(s, session.Event{Type: "error", Message: "llm: " + err.Error()})
-					return
-				}
-				conv.Add("assistant", reply)
-				emit(s, session.Event{Type: "transcript", Role: "agent", Text: reply, Final: true})
-				s.AppendTranscript("agent", reply)
-
-				emit(s, session.Event{Type: "status", State: "speaking"})
-				audio, err := a.synthesize(ctx, reply, ttsKey, ttsModel, pick(s.Config.Voice, ttsVoice))
-				if err != nil {
-					a.logger.Warn("assemblyai tts", "error", err)
-					emit(s, session.Event{Type: "error", Message: "tts: " + err.Error()})
-					return
-				}
+		}
+	case "transcript.agent":
+		var ev struct {
+			Text        string `json:"text"`
+			Interrupted bool   `json:"interrupted"`
+		}
+		if err := json.Unmarshal(raw, &ev); err == nil && ev.Text != "" {
+			emit(s, session.Event{Type: "transcript", Role: "agent", Text: ev.Text, Final: true})
+			s.AppendTranscript("agent", ev.Text)
+		}
+	case "reply.started":
+		emit(s, session.Event{Type: "status", State: "speaking"})
+	case "reply.audio":
+		var ev struct {
+			Audio string `json:"audio"`
+		}
+		if err := json.Unmarshal(raw, &ev); err == nil && ev.Audio != "" {
+			if pcm, err := base64.StdEncoding.DecodeString(ev.Audio); err == nil {
 				select {
-				case s.AudioOut <- audio:
-				case <-ctx.Done():
+				case s.AudioOut <- pcm:
+				case <-s.Context().Done():
+					return
 				}
-				emit(s, session.Event{Type: "status", State: "listening"})
-			}(conv.Snapshot())
+			}
 		}
+	case "reply.done":
+		emit(s, session.Event{Type: "status", State: "listening"})
+	case "session.error":
+		var ev struct {
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(raw, &ev)
+		a.logger.Warn("assemblyai agent error", "msg", ev.Message)
+		emit(s, session.Event{Type: "error", Message: ev.Message})
 	}
 }
-
-type assemblyaiMessage struct {
-	Type       string `json:"type"`
-	Transcript string `json:"transcript"`
-	EndOfTurn  bool   `json:"end_of_turn"`
-	TurnOrder  int    `json:"turn_order"`
-}
-
-func (a *AssemblyAI) completeLLM(ctx context.Context, messages []chatMessage, apiKey, model string) (string, error) {
-	body, _ := json.Marshal(map[string]any{
-		"model":    model,
-		"messages": messages,
-		"stream":   false,
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.cfg.LLMURL, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("llm %d: %s", resp.StatusCode, string(respBody))
-	}
-	var parsed chatCompletionResponse
-	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return "", err
-	}
-	if len(parsed.Choices) == 0 {
-		return "", fmt.Errorf("empty llm response")
-	}
-	return parsed.Choices[0].Message.Content, nil
-}
-
-// synthesize calls the OpenAI-compatible speech endpoint and returns PCM16 audio bytes.
-// Key/model/voice are passed explicitly so per-tenant overrides apply.
-func (a *AssemblyAI) synthesize(ctx context.Context, text, apiKey, model, voice string) ([]byte, error) {
-	body, _ := json.Marshal(map[string]any{
-		"model":           model,
-		"voice":           voice,
-		"input":           text,
-		"response_format": "wav",
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.cfg.TTSURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("tts %d: %s", resp.StatusCode, string(b))
-	}
-	wavBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	// Strip the 44-byte WAV header if present so downstream sees raw PCM16.
-	if len(wavBytes) > 44 && bytes.HasPrefix(wavBytes, []byte("RIFF")) {
-		return wavBytes[44:], nil
-	}
-	return wavBytes, nil
-}
-
-// Avoid unused-import errors if the future moves things around.
-var _ = base64.StdEncoding

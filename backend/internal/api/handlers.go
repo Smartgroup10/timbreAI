@@ -330,17 +330,18 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 		var creds voiceagent.Credentials
 		if vc, err := s.store.GetVoiceCredentials(r.Context(), tenantID); err == nil {
 			creds = voiceagent.Credentials{
-				OpenAIAPIKey:        vc.OpenAIAPIKey,
-				OpenAIRealtimeModel: vc.OpenAIRealtimeModel,
-				OpenAIRealtimeVoice: vc.OpenAIRealtimeVoice,
-				DeepgramAPIKey:      vc.DeepgramAPIKey,
-				DeepgramASRModel:    vc.DeepgramASRModel,
-				DeepgramTTSModel:    vc.DeepgramTTSModel,
-				DeepgramLLMModel:    vc.DeepgramLLMModel,
-				AssemblyAIAPIKey:    vc.AssemblyAIAPIKey,
-				AssemblyAILLMModel:  vc.AssemblyAILLMModel,
-				AssemblyAITTSModel:  vc.AssemblyAITTSModel,
-				AssemblyAITTSVoice:  vc.AssemblyAITTSVoice,
+				OpenAIAPIKey:          vc.OpenAIAPIKey,
+				OpenAIRealtimeModel:   vc.OpenAIRealtimeModel,
+				OpenAIRealtimeVoice:   vc.OpenAIRealtimeVoice,
+				DeepgramAPIKey:        vc.DeepgramAPIKey,
+				DeepgramListenModel:   vc.DeepgramListenModel,
+				DeepgramThinkProvider: vc.DeepgramThinkProvider,
+				DeepgramThinkModel:    vc.DeepgramThinkModel,
+				DeepgramSpeakModel:    vc.DeepgramSpeakModel,
+				DeepgramGreeting:      vc.DeepgramGreeting,
+				AssemblyAIAPIKey:      vc.AssemblyAIAPIKey,
+				AssemblyAIVoice:       vc.AssemblyAIVoice,
+				AssemblyAIGreeting:    vc.AssemblyAIGreeting,
 			}
 		}
 

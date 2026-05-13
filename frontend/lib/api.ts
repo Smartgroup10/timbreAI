@@ -107,13 +107,14 @@ export type VoiceCredentials = {
   openaiRealtimeModel: string;
   openaiRealtimeVoice: string;
   deepgramApiKey: string;
-  deepgramAsrModel: string;
-  deepgramTtsModel: string;
-  deepgramLlmModel: string;
+  deepgramListenModel: string;
+  deepgramThinkProvider: string;
+  deepgramThinkModel: string;
+  deepgramSpeakModel: string;
+  deepgramGreeting: string;
   assemblyaiApiKey: string;
-  assemblyaiLlmModel: string;
-  assemblyaiTtsModel: string;
-  assemblyaiTtsVoice: string;
+  assemblyaiVoice: string;
+  assemblyaiGreeting: string;
 };
 
 export type TenantSettings = {
