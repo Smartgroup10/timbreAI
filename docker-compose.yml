@@ -145,6 +145,14 @@ services:
     environment:
       ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-timbre}
       ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
+      # Para que res_config_pgsql.conf.tpl pueda interpolar las credenciales
+      # del Postgres compartido (mismo cluster que el backend).
+      POSTGRES_DB: ${POSTGRES_DB:-atrium_calls}
+      POSTGRES_USER: ${POSTGRES_USER:-atrium}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - asterisk_spool:/var/spool/asterisk
       - asterisk_logs:/var/log/asterisk

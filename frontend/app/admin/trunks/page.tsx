@@ -124,9 +124,9 @@ export default function TrunksPage() {
 
           <div className="panel" style={{ marginBottom: 16 }}>
             <p className="subtle" style={{ marginBottom: 0 }}>
-              <strong>Importante:</strong> el campo <code>asteriskEndpoint</code> debe coincidir con el nombre del bloque{" "}
-              <code>[name]</code> en <code>asterisk/etc/asterisk/pjsip.conf</code>. Aqui solo se gestiona la metadata; las
-              credenciales SIP siguen en el contenedor Asterisk.
+              Asterisk lee los trunks <strong>en vivo desde Postgres</strong> (PJSIP Realtime). Al crear o editar
+              un trunk aquí, los cambios se aplican sin reiniciar Asterisk. El campo <code>endpoint</code> es el
+              identificador interno que usarás en la marcación (p.ej. <code>PJSIP/{`{numero}`}@twilio-eu</code>).
             </p>
           </div>
 
@@ -225,6 +225,10 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
   const [asteriskEndpoint, setAsteriskEndpoint] = useState("");
   const [host, setHost] = useState("");
   const [port, setPort] = useState(5060);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [register, setRegister] = useState(true);
+  const [identifyIp, setIdentifyIp] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -235,7 +239,19 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
       onSubmit={async (e) => {
         e.preventDefault();
         setSubmitting(true);
-        await onSubmit({ name, provider, asteriskEndpoint, host, port, notes, status: "active" });
+        await onSubmit({
+          name,
+          provider,
+          asteriskEndpoint,
+          host,
+          port,
+          username,
+          password,
+          register,
+          identifyIp,
+          notes,
+          status: "active",
+        });
         setSubmitting(false);
       }}
     >
@@ -261,7 +277,7 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
           </select>
         </div>
         <div className="field">
-          <label>Endpoint Asterisk (nombre en pjsip.conf)</label>
+          <label>Endpoint (identificador interno)</label>
           <input
             value={asteriskEndpoint}
             onChange={(e) => setAsteriskEndpoint(e.target.value)}
@@ -270,12 +286,36 @@ function TrunkForm({ onSubmit }: { onSubmit: (input: Partial<SIPTrunk>) => Promi
           />
         </div>
         <div className="field">
-          <label>Host del proveedor (info)</label>
+          <label>Host del proveedor</label>
           <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="sip.twilio.com" />
         </div>
         <div className="field">
           <label>Puerto</label>
           <input type="number" value={port} onChange={(e) => setPort(parseInt(e.target.value, 10) || 5060)} />
+        </div>
+        <div className="field">
+          <label>Usuario SIP</label>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ACxxxxxxx (Twilio SID)" />
+        </div>
+        <div className="field">
+          <label>Contraseña SIP</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+        </div>
+        <div className="field">
+          <label>Modo de autenticación</label>
+          <select value={register ? "register" : "identify"} onChange={(e) => setRegister(e.target.value === "register")}>
+            <option value="register">REGISTER (Twilio Programmable Voice, Vonage)</option>
+            <option value="identify">IP Identify (Twilio Elastic SIP Trunking, Telnyx)</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>IP del proveedor (solo modo Identify)</label>
+          <input
+            value={identifyIp}
+            onChange={(e) => setIdentifyIp(e.target.value)}
+            placeholder="54.172.60.0"
+            disabled={register}
+          />
         </div>
         <div className="field" style={{ gridColumn: "1 / -1" }}>
           <label>Notas</label>

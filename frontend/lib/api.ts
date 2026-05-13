@@ -77,6 +77,10 @@ export type SIPTrunk = {
   asteriskEndpoint: string;
   host: string;
   port: number;
+  username: string;
+  password?: string;
+  register: boolean;
+  identifyIp: string;
   status: string;
   notes: string;
   didCount: number;

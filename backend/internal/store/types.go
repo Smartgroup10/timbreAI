@@ -68,6 +68,10 @@ type SIPTrunk struct {
 	AsteriskEndpoint string    `json:"asteriskEndpoint"`
 	Host             string    `json:"host"`
 	Port             int       `json:"port"`
+	Username         string    `json:"username"`
+	Password         string    `json:"password,omitempty"` // solo se devuelve enmascarado al frontend
+	Register         bool      `json:"register"`
+	IdentifyIP       string    `json:"identifyIp"`
 	Status           string    `json:"status"`
 	Notes            string    `json:"notes"`
 	DIDCount         int       `json:"didCount"`
