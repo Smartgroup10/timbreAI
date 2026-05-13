@@ -11,15 +11,19 @@ echo "==> [entrypoint] Generando configs en /etc/asterisk/"
 # ── res_config_pgsql.conf ────────────────────────────────────────────────
 # Driver Realtime: lee endpoints/auths/aors/registrations/identifies de
 # Postgres. Las credenciales son las del clúster compartido con el backend.
+# OJO con los nombres de variables: son dbhost/dbname/dbuser/dbpass/dbport/
+# dbappname (con prefijo db), no hostname/database/user/password como en
+# otros drivers. Y con espacios alrededor del "=" (algunos parsers de
+# Asterisk son quisquillosos con el formato).
 cat > /etc/asterisk/res_config_pgsql.conf <<EOF
 [general]
-dbhost=${POSTGRES_HOST:-postgres}
-dbport=${POSTGRES_PORT:-5432}
-dbname=${POSTGRES_DB:-atrium_calls}
-dbuser=${POSTGRES_USER:-atrium}
-dbpass=${POSTGRES_PASSWORD:-change-me}
-appname=asterisk-realtime
-requirements=warn
+dbhost = ${POSTGRES_HOST:-postgres}
+dbport = ${POSTGRES_PORT:-5432}
+dbname = ${POSTGRES_DB:-atrium_calls}
+dbuser = ${POSTGRES_USER:-atrium}
+dbpass = ${POSTGRES_PASSWORD:-change-me}
+dbappname = asterisk-realtime
+requirements = warn
 EOF
 
 # ── ari.conf ────────────────────────────────────────────────────────────
@@ -210,6 +214,10 @@ chown -R asterisk:asterisk /etc/asterisk /var/run/asterisk /var/log/asterisk /va
 echo "==> [entrypoint] config rendered:"
 echo "    dbhost=${POSTGRES_HOST:-postgres} dbname=${POSTGRES_DB:-atrium_calls} dbuser=${POSTGRES_USER:-atrium}"
 echo "    ari_user=${ASTERISK_ARI_USER:-timbre}"
+echo "==> [entrypoint] /etc/asterisk/res_config_pgsql.conf:"
+sed 's/^dbpass = .*/dbpass = [REDACTED]/' /etc/asterisk/res_config_pgsql.conf | sed 's/^/    /'
+echo "==> [entrypoint] permisos de /etc/asterisk/:"
+ls -la /etc/asterisk/ | head -20 | sed 's/^/    /'
 echo "==> [entrypoint] arrancando Asterisk..."
 
 exec asterisk -f -U asterisk -G asterisk
