@@ -188,6 +188,36 @@ type BotToolInvocation struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
+// WebhookEndpoint es la suscripción de un tenant a un canal CRM. Se
+// dispara cuando suceden eventos del tipo listado en Events.
+type WebhookEndpoint struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenantId"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	// Secret se muestra UNA VEZ al crear (response JSON) y luego nunca
+	// se devuelve en GET — para que un atacante con acceso de lectura
+	// no pueda firmar webhooks. La UI guarda "se generó" y punto.
+	Secret    string    `json:"secret,omitempty"`
+	Events    []string  `json:"events"`
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type WebhookDelivery struct {
+	ID          string         `json:"id"`
+	TenantID    string         `json:"tenantId"`
+	EndpointID  *string        `json:"endpointId,omitempty"`
+	EventType   string         `json:"eventType"`
+	Payload     map[string]any `json:"payload"`
+	StatusCode  int            `json:"statusCode"`
+	Error       string         `json:"error,omitempty"`
+	Attempt     int            `json:"attempt"`
+	DeliveredAt *time.Time     `json:"deliveredAt,omitempty"`
+	CreatedAt   time.Time      `json:"createdAt"`
+}
+
 type DoNotCallEntry struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenantId"`

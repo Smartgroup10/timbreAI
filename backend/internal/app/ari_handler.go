@@ -48,16 +48,25 @@ type BridgeConfig struct {
 	AudioSocketPort string
 }
 
+// OnCallFinishedFn se invoca cuando una llamada termina, después de
+// persistir el estado final. Usado para disparar webhooks call.completed
+// sin acoplar el handler ARI al dispatcher.
+type OnCallFinishedFn func(ctx context.Context, callID string)
+
 func MakeARIHandler(
 	st *store.Store,
 	ariClient *ari.Client,
 	va *voiceagent.Client,
 	bc BridgeConfig,
 	releaseSlot releaseSlotFn,
+	onCallFinished OnCallFinishedFn,
 	logger *slog.Logger,
 ) ari.EventHandler {
 	if releaseSlot == nil {
 		releaseSlot = func(string) {}
+	}
+	if onCallFinished == nil {
+		onCallFinished = func(context.Context, string) {}
 	}
 	if bc.Mode == "" {
 		bc.Mode = BridgeModeAudioSocket
@@ -70,7 +79,7 @@ func MakeARIHandler(
 		case "StasisStart":
 			handleStasisStart(ctx, ev, st, ariClient, va, bc, logger)
 		case "ChannelDestroyed":
-			handleChannelDestroyed(ctx, ev, st, releaseSlot, logger)
+			handleChannelDestroyed(ctx, ev, st, releaseSlot, onCallFinished, logger)
 		case "ChannelStateChange":
 			logger.Debug("ari state change", "channel", channelID(ev))
 		}
@@ -207,7 +216,7 @@ func handleStasisStart(
 	logger.Info("stasis bridged", "call", call.ID, "bridge", bridgeID, "external_media", emCh.ID)
 }
 
-func handleChannelDestroyed(ctx context.Context, ev ari.Event, st *store.Store, releaseSlot releaseSlotFn, logger *slog.Logger) {
+func handleChannelDestroyed(ctx context.Context, ev ari.Event, st *store.Store, releaseSlot releaseSlotFn, onCallFinished OnCallFinishedFn, logger *slog.Logger) {
 	id := channelID(ev)
 	dur := extractDuration(ev.Raw)
 	cause := extractCause(ev.Raw)
@@ -233,6 +242,9 @@ func handleChannelDestroyed(ctx context.Context, ev ari.Event, st *store.Store, 
 	}
 	if callID != "" {
 		releaseSlot(callID)
+		// Notify post-call hooks (webhook dispatcher). Fire-and-forget en
+		// goroutine para no bloquear el ARI loop ni el cleanup del canal.
+		go onCallFinished(context.Background(), callID)
 	}
 	logger.Info("channel destroyed", "channel", id, "cause", cause, "duration_sec", dur)
 }

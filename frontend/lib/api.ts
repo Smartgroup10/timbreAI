@@ -263,6 +263,39 @@ export type BotToolInput = {
   enabled?: boolean;
 };
 
+export type WebhookEndpoint = {
+  id: string;
+  tenantId: string;
+  name: string;
+  url: string;
+  /** Solo presente en la respuesta del POST de create y POST regenerate. */
+  secret?: string;
+  events: string[];
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WebhookEndpointInput = {
+  name: string;
+  url: string;
+  events: string[];
+  active?: boolean;
+};
+
+export type WebhookDelivery = {
+  id: string;
+  tenantId: string;
+  endpointId?: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  statusCode: number;
+  error?: string;
+  attempt: number;
+  deliveredAt?: string;
+  createdAt: string;
+};
+
 export type LoginResponse = {
   token: string;
   expiresAt: string;
@@ -379,6 +412,19 @@ export const api = {
     request<BotTool>("PATCH", withTenant(`/api/bots/${botId}/tools/${toolId}`, tenantOverride), input),
   deleteBotTool: (botId: string, toolId: string, tenantOverride?: string) =>
     request<void>("DELETE", withTenant(`/api/bots/${botId}/tools/${toolId}`, tenantOverride)),
+  webhooks: (tenantOverride?: string) =>
+    request<WebhookEndpoint[]>("GET", withTenant("/api/webhooks", tenantOverride)),
+  createWebhook: (input: WebhookEndpointInput, tenantOverride?: string) =>
+    request<WebhookEndpoint>("POST", withTenant("/api/webhooks", tenantOverride), input),
+  updateWebhook: (id: string, input: WebhookEndpointInput, tenantOverride?: string) =>
+    request<WebhookEndpoint>("PATCH", withTenant(`/api/webhooks/${id}`, tenantOverride), input),
+  deleteWebhook: (id: string, tenantOverride?: string) =>
+    request<void>("DELETE", withTenant(`/api/webhooks/${id}`, tenantOverride)),
+  regenerateWebhookSecret: (id: string, tenantOverride?: string) =>
+    request<{ secret: string }>("POST", withTenant(`/api/webhooks/${id}/regenerate`, tenantOverride)),
+  webhookDeliveries: (tenantOverride?: string) =>
+    request<WebhookDelivery[]>("GET", withTenant("/api/webhook-deliveries", tenantOverride)),
+  webhookEvents: () => request<{ events: string[] }>("GET", "/api/webhook-events"),
   createLead: (input: Partial<Lead>, tenantOverride?: string) =>
     request<Lead>("POST", withTenant("/api/leads", tenantOverride), input),
   importLeads: (csv: string, tenantOverride?: string) =>

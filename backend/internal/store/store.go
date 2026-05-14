@@ -392,6 +392,24 @@ func (s *Store) ListCalls(ctx context.Context, tenantID string, limit int) ([]Ca
 	return out, rows.Err()
 }
 
+// GetCallByID resuelve la call por id sin scope de tenant. Solo lo usa
+// código interno que ya validó autorización por otra vía (p.ej. callback
+// del ARI handler que sabe que el id viene de un canal real recién
+// destruido). NUNCA llamar desde un handler HTTP autenticado por tenant.
+func (s *Store) GetCallByID(ctx context.Context, id string) (Call, error) {
+	var c Call
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
+		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url, provider
+		FROM calls WHERE id = $1`, id).
+		Scan(&c.ID, &c.TenantID, &c.LeadID, &c.CampaignID, &c.LeadName, &c.Campaign, &c.Phone, &c.Status, &c.Outcome,
+			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL, &c.Provider)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return c, ErrNotFound
+	}
+	return c, err
+}
+
 func (s *Store) GetCall(ctx context.Context, tenantID, id string) (Call, error) {
 	var c Call
 	err := s.pool.QueryRow(ctx, `

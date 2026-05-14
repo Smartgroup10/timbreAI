@@ -7,6 +7,7 @@ import (
 
 	"timbre/backend/internal/ari"
 	"timbre/backend/internal/config"
+	"timbre/backend/internal/outwebhook"
 	"timbre/backend/internal/pricing"
 	"timbre/backend/internal/storage"
 	"timbre/backend/internal/store"
@@ -20,6 +21,7 @@ type Server struct {
 	voiceAgent *voiceagent.Client
 	storage    *storage.Client
 	pricing    *pricing.Table
+	webhooks   *outwebhook.Dispatcher
 	logger     *slog.Logger
 	loginRate  *rateLimiter
 }
@@ -32,6 +34,7 @@ func New(cfg config.Config, st *store.Store, ariClient *ari.Client, va *voiceage
 		voiceAgent: va,
 		storage:    storeClient,
 		pricing:    pricing.NewTable(),
+		webhooks:   outwebhook.New(st, logger.With("component", "outwebhook"), 4, 1024),
 		logger:     logger,
 		// 1 token per second, burst of 10 => allows brief bursts but blocks brute-force.
 		loginRate: newRateLimiter(time.Second, 10),
@@ -132,6 +135,15 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/analytics", s.requireAuth(s.handleAnalytics))
 	mux.HandleFunc("GET /api/pricing", s.requireAuth(s.handlePricing))
+
+	// Webhooks salientes — gestión per-tenant.
+	mux.HandleFunc("GET /api/webhooks", s.requireAuth(s.handleListWebhooks))
+	mux.HandleFunc("POST /api/webhooks", s.requireAuth(s.handleCreateWebhook))
+	mux.HandleFunc("PATCH /api/webhooks/{id}", s.requireAuth(s.handleUpdateWebhook))
+	mux.HandleFunc("DELETE /api/webhooks/{id}", s.requireAuth(s.handleDeleteWebhook))
+	mux.HandleFunc("POST /api/webhooks/{id}/regenerate", s.requireAuth(s.handleRegenerateWebhookSecret))
+	mux.HandleFunc("GET /api/webhook-deliveries", s.requireAuth(s.handleListWebhookDeliveries))
+	mux.HandleFunc("GET /api/webhook-events", s.requireAuth(s.handleWebhookEvents))
 
 	// Platform-admin only
 	mux.HandleFunc("GET /api/admin/tenants", s.requireRole("platform_admin", s.handleTenants))
