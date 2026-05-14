@@ -461,11 +461,52 @@ export function statusClass(status: string) {
   if (["active", "completed", "qualified", "answered", "registrado"].includes(status)) {
     return "status good";
   }
-  if (["paused", "callback", "queued", "draft", "dialing"].includes(status)) {
+  if (["paused", "callback", "queued", "draft", "dialing", "calling"].includes(status)) {
     return "status warn";
   }
-  if (["failed", "blocked", "no_answer", "busy"].includes(status)) {
+  if (["failed", "blocked", "no_answer", "busy", "unreachable", "caído"].includes(status)) {
     return "status danger";
   }
   return "status";
+}
+
+// Mapa de status técnicos a etiquetas para usuario final. La idea es que en la
+// UI nunca aparezcan "queued", "dialing", "no_answer", etc. crudos en inglés.
+// Cualquier valor no mapeado se devuelve sin cambio (mejor que romper) — si
+// aparece, añadirlo aquí.
+const STATUS_LABELS: Record<string, string> = {
+  // Llamadas / campaigns
+  active: "Activa",
+  paused: "Pausada",
+  draft: "Borrador",
+  scheduled: "Programada",
+  completed: "Completada",
+  queued: "En cola",
+  dialing: "Marcando",
+  calling: "Llamando",
+  in_progress: "En curso",
+  answered: "Contestada",
+  failed: "Fallida",
+  no_answer: "Sin respuesta",
+  busy: "Ocupado",
+  unreachable: "Inalcanzable",
+  blocked: "Bloqueado",
+  pending: "Pendiente",
+  skipped: "Omitida",
+  // Outcomes
+  qualified: "Cualificado",
+  callback: "Llamar de vuelta",
+  // Leads / DIDs / trunks / users
+  new: "Nuevo",
+  disabled: "Deshabilitado",
+  // SIP
+  registrado: "Registrado",
+  desconocido: "Desconocido",
+  online: "En línea",
+  offline: "Sin conexión",
+};
+
+export function statusLabel(status: string): string {
+  if (!status) return "—";
+  return STATUS_LABELS[status] || status;
 }

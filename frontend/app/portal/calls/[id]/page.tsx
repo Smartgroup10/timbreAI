@@ -3,7 +3,7 @@
 import { use } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { api, statusClass } from "../../../../lib/api";
+import { api, statusClass, statusLabel } from "../../../../lib/api";
 import { useTenantScope } from "../../../../lib/auth-context";
 import { useResource } from "../../../../lib/use-resource";
 
@@ -49,7 +49,7 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
           </p>
         </div>
         <div className="actions">
-          <span className={statusClass(c.status)}>{c.status}</span>
+          <span className={statusClass(c.status)}>{statusLabel(c.status)}</span>
           <span className="chip">{c.outcome}</span>
         </div>
       </div>

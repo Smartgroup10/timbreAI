@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, PhoneCall, Trash2 } from "lucide-react";
 import { TestCallDrawer } from "../../../../components/test-call-drawer";
 import { useToast } from "../../../../components/toast";
-import { api, ApiError, statusClass } from "../../../../lib/api";
+import { api, ApiError, statusClass, statusLabel } from "../../../../lib/api";
 import { useTenantScope } from "../../../../lib/auth-context";
 import { useResource } from "../../../../lib/use-resource";
 
@@ -91,7 +91,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               <p className="eyebrow">Datos</p>
               <h2>Información del lead</h2>
             </div>
-            <span className={statusClass(l.status)}>{l.status}</span>
+            <span className={statusClass(l.status)}>{statusLabel(l.status)}</span>
           </div>
           <div className="command-strip">
             <Row label="Tipo" value={<span className="chip">{l.type}</span>} />
@@ -179,7 +179,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                     </td>
                     <td>{c.campaign || "Manual"}</td>
                     <td>
-                      <span className={statusClass(c.status)}>{c.status}</span>
+                      <span className={statusClass(c.status)}>{statusLabel(c.status)}</span>
                     </td>
                     <td>
                       <span className="chip">{c.outcome}</span>

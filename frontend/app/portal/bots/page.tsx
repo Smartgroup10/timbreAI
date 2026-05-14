@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, Bot, DID, VoiceCredentials, statusClass } from "../../../lib/api";
+import { api, ApiError, Bot, DID, VoiceCredentials, statusClass, statusLabel } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
@@ -135,7 +135,7 @@ function BotCard({
           <p className="eyebrow">{bot.type}</p>
           <h2>{bot.name}</h2>
         </div>
-        <span className={statusClass(bot.status)}>{bot.status}</span>
+        <span className={statusClass(bot.status)}>{statusLabel(bot.status)}</span>
       </div>
       <p className="subtle">{bot.objective}</p>
       <div className="filter-row">

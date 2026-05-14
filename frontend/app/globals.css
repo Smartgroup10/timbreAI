@@ -313,6 +313,26 @@ textarea {
   padding: 32px;
 }
 
+/* Banner amarillo que aparece arriba del contenido cuando un platform_admin
+   está impersonando un tenant. Evita confusión sobre qué cuenta está
+   operando — "estoy creando un trunk en MI tenant" vs "en el del cliente". */
+.impersonation-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  margin-bottom: 24px;
+  border-radius: 12px;
+  border: 1px solid rgba(228, 156, 50, 0.45);
+  background: linear-gradient(180deg, rgba(255, 232, 184, 0.55), rgba(255, 219, 153, 0.35));
+  color: #6c4a08;
+  font-size: 14px;
+}
+.impersonation-banner strong {
+  color: #4a3206;
+}
+
 /* ---- Typography ---- */
 
 .topbar {

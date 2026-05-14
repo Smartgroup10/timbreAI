@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TestCallDrawer } from "../../../components/test-call-drawer";
-import { api, statusClass } from "../../../lib/api";
+import { api, statusClass, statusLabel } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
@@ -35,7 +35,7 @@ export default function CallsPage() {
         <div className="page-title">
           <p className="eyebrow">Portal cliente</p>
           <h1>Llamadas</h1>
-          <p className="subtle">Historial operativo con resultado, duracion y resumen accionable del bot.</p>
+          <p className="subtle">Historial operativo con resultado, duración y resumen accionable del bot.</p>
         </div>
         <div className="actions">
           <button className="button secondary" disabled>
@@ -54,7 +54,7 @@ export default function CallsPage() {
             className={`chip-button${filter === opt ? " active" : ""}`}
             onClick={() => setFilter(opt)}
           >
-            {opt === "all" ? "Todas" : opt}
+            {opt === "all" ? "Todas" : statusLabel(opt)}
           </button>
         ))}
         <button className="chip-button" onClick={() => calls.reload()}>
@@ -74,11 +74,11 @@ export default function CallsPage() {
             <thead>
               <tr>
                 <th>Lead</th>
-                <th>Telefono</th>
-                <th>Campana</th>
+                <th>Teléfono</th>
+                <th>Campaña</th>
                 <th>Estado</th>
                 <th>Resultado</th>
-                <th>Duracion</th>
+                <th>Duración</th>
                 <th>Canal</th>
                 <th>Resumen</th>
               </tr>
@@ -94,10 +94,10 @@ export default function CallsPage() {
                   <td>{call.phone}</td>
                   <td>{call.campaign || "—"}</td>
                   <td>
-                    <span className={statusClass(call.status)}>{call.status}</span>
+                    <span className={statusClass(call.status)}>{statusLabel(call.status)}</span>
                   </td>
                   <td>
-                    <span className="chip">{call.outcome}</span>
+                    <span className="chip">{statusLabel(call.outcome)}</span>
                   </td>
                   <td>{formatDuration(call.durationSec)}</td>
                   <td>

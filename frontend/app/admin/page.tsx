@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Pencil } from "lucide-react";
 import { useToast } from "../../components/toast";
-import { api, ApiError, Tenant, statusClass } from "../../lib/api";
+import { api, ApiError, Tenant, statusClass, statusLabel } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useResource } from "../../lib/use-resource";
 
@@ -100,7 +100,7 @@ export default function AdminPage() {
                     <span className="chip">{tenant.plan}</span>
                   </td>
                   <td>
-                    <span className={statusClass(tenant.status)}>{tenant.status}</span>
+                    <span className={statusClass(tenant.status)}>{statusLabel(tenant.status)}</span>
                   </td>
                   <td>{new Date(tenant.createdAt).toLocaleDateString()}</td>
                   <td style={{ whiteSpace: "nowrap" }}>

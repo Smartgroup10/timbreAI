@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, DID, SIPTrunk, Tenant, statusClass } from "../../../lib/api";
+import { api, ApiError, DID, SIPTrunk, Tenant, statusClass, statusLabel } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
@@ -211,7 +211,7 @@ export default function TrunksPage() {
                     <th>Estado app</th>
                     <th>Estado SIP {ariEnabled === false ? <span className="subtle">(ARI off)</span> : null}</th>
                     <th>DIDs</th>
-                    <th>Accion</th>
+                    <th>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -231,7 +231,7 @@ export default function TrunksPage() {
                           {trunk.port ? `:${trunk.port}` : ""}
                         </td>
                         <td>
-                          <span className={statusClass(trunk.status)}>{trunk.status}</span>
+                          <span className={statusClass(trunk.status)}>{statusLabel(trunk.status)}</span>
                         </td>
                         <td>
                           <SipStateBadge state={sip?.state} ariEnabled={ariEnabled} />
@@ -605,7 +605,7 @@ function DIDRow({
         </select>
       </td>
       <td>
-        <span className={statusClass(did.status)}>{did.status}</span>
+        <span className={statusClass(did.status)}>{statusLabel(did.status)}</span>
       </td>
       <td>
         <button className="button ghost compact" onClick={onEdit}>

@@ -147,7 +147,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">
+        {isAdmin && tenantOverride ? (
+          <div className="impersonation-banner" role="status">
+            <span>
+              Estás operando como tenant <strong>{activeTenantName}</strong>. Cualquier cambio
+              afecta a sus datos en producción.
+            </span>
+            <button className="button ghost compact" onClick={() => setTenantOverride("")}>
+              Salir del modo impersonación
+            </button>
+          </div>
+        ) : null}
+        {children}
+      </main>
     </div>
   );
 }

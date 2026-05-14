@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StatCard } from "../../../components/stat-card";
-import { api, statusClass } from "../../../lib/api";
+import { api, statusClass, statusLabel } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
@@ -160,7 +160,7 @@ export default function OperationsPage() {
                       </td>
                       <td>{t.provider || "—"}</td>
                       <td>
-                        <span className={statusClass(stateLabel)}>{stateLabel}</span>
+                        <span className={statusClass(stateLabel)}>{statusLabel(stateLabel)}</span>
                       </td>
                       <td>{sip?.channel_ids?.length ?? 0}</td>
                     </tr>

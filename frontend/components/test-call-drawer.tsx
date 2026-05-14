@@ -45,7 +45,7 @@ export function TestCallDrawer({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!phone.trim()) {
-      toast.push("Numero de telefono requerido", "warn");
+      toast.push("Número de teléfono requerido", "warn");
       return;
     }
     setSubmitting(true);
@@ -86,7 +86,7 @@ export function TestCallDrawer({
 
         <form className="drawer-body" onSubmit={handleSubmit}>
           <div className="field">
-            <label htmlFor="phone">Telefono destino</label>
+            <label htmlFor="phone">Teléfono destino</label>
             <input
               id="phone"
               type="tel"

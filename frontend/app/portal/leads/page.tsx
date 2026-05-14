@@ -99,7 +99,7 @@ export default function LeadsPage() {
         <div className="page-title">
           <p className="eyebrow">Portal cliente</p>
           <h1>Leads</h1>
-          <p className="subtle">Contactos disponibles para campanas, llamadas de seguimiento y handoff comercial.</p>
+          <p className="subtle">Contactos disponibles para campañas, llamadas de seguimiento y handoff comercial.</p>
         </div>
         <div className="actions">
           <button className="button secondary" onClick={() => setFormOpen((v) => !v)}>
@@ -171,7 +171,7 @@ export default function LeadsPage() {
         </div>
         <input
           className="search-input"
-          placeholder="Buscar por nombre, telefono o email…"
+          placeholder="Buscar por nombre, teléfono o email…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -189,13 +189,13 @@ export default function LeadsPage() {
             <thead>
               <tr>
                 <th>Nombre</th>
-                <th>Telefono</th>
+                <th>Teléfono</th>
                 <th>Email</th>
                 <th>Tipo</th>
                 <th>Estado</th>
                 <th>Fuente</th>
                 <th>Consentimiento</th>
-                <th>Accion</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -284,7 +284,7 @@ function NewLeadForm({ onSubmit }: { onSubmit: (input: Partial<Lead>) => Promise
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="field">
-          <label>Telefono</label>
+          <label>Teléfono</label>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} required />
         </div>
         <div className="field">

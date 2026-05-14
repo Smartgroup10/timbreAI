@@ -5,7 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Minus, Phone, PhoneCall } from "lucide-re
 import { StatCard } from "../../components/stat-card";
 import { TestCallDrawer } from "../../components/test-call-drawer";
 import { DailyBars, HBars } from "../../components/charts";
-import { api, Call, statusClass } from "../../lib/api";
+import { api, Call, statusClass, statusLabel } from "../../lib/api";
 import { useTenantScope } from "../../lib/auth-context";
 import { useResource } from "../../lib/use-resource";
 
@@ -127,7 +127,7 @@ export default function PortalDashboard() {
                       <code className="mono">{c.phone}</code>
                     </td>
                     <td>
-                      <span className={statusClass(c.status)}>{c.status}</span>
+                      <span className={statusClass(c.status)}>{statusLabel(c.status)}</span>
                     </td>
                   </tr>
                 ))}
@@ -188,7 +188,7 @@ export default function PortalDashboard() {
                   </td>
                   <td>{c.campaign || "—"}</td>
                   <td>
-                    <span className={statusClass(c.outcome)}>{c.outcome || "—"}</span>
+                    <span className={statusClass(c.outcome)}>{statusLabel(c.outcome)}</span>
                   </td>
                   <td>{c.durationSec > 0 ? `${c.durationSec}s` : "—"}</td>
                 </tr>

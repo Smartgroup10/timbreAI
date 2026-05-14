@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Pause, Play, Trash2, Users } from "lucide-react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, Bot, Call, Campaign, CampaignLead, Lead, statusClass } from "../../../lib/api";
+import { api, ApiError, Bot, Call, Campaign, CampaignLead, Lead, statusClass, statusLabel } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
@@ -105,7 +105,7 @@ export default function CampaignsPage() {
                 <p className="eyebrow">Campaña</p>
                 <h2>{campaign.name}</h2>
               </div>
-              <span className={statusClass(campaign.status)}>{campaign.status}</span>
+              <span className={statusClass(campaign.status)}>{statusLabel(campaign.status)}</span>
             </div>
             <div className="command-strip">
               <div className="command-row">
@@ -291,8 +291,8 @@ function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Parti
         <div className="field">
           <label>Estado inicial</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="draft">Draft (no marca)</option>
-            <option value="active">Active (empieza ya)</option>
+            <option value="draft">Borrador (no marca todavía)</option>
+            <option value="active">Activa (empieza al guardar)</option>
           </select>
         </div>
       </div>
@@ -453,7 +453,7 @@ function CampaignLeadsDrawer({
                         <code className="mono">{cl.leadPhone || ""}</code>
                       </td>
                       <td>
-                        <span className={statusClass(cl.status)}>{cl.status}</span>
+                        <span className={statusClass(cl.status)}>{statusLabel(cl.status)}</span>
                       </td>
                       <td>{cl.attempts}</td>
                       <td className="subtle">
@@ -501,10 +501,10 @@ function CampaignLeadsDrawer({
                           <code className="mono">{c.phone}</code>
                         </td>
                         <td>
-                          <span className={statusClass(c.status)}>{c.status}</span>
+                          <span className={statusClass(c.status)}>{statusLabel(c.status)}</span>
                         </td>
                         <td>
-                          <span className={statusClass(c.outcome)}>{c.outcome || "—"}</span>
+                          <span className={statusClass(c.outcome)}>{statusLabel(c.outcome)}</span>
                         </td>
                         <td>{c.durationSec > 0 ? `${c.durationSec}s` : "—"}</td>
                         <td className="subtle">
@@ -557,7 +557,7 @@ function CampaignLeadsDrawer({
                           </td>
                           <td>{l.type}</td>
                           <td>
-                            <span className={statusClass(l.status)}>{l.status}</span>
+                            <span className={statusClass(l.status)}>{statusLabel(l.status)}</span>
                           </td>
                         </tr>
                       ))}
