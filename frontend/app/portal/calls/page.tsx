@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { PhoneCall } from "lucide-react";
+import { EmptyState } from "../../../components/empty";
+import { TableSkeleton } from "../../../components/skeleton";
 import { TestCallDrawer } from "../../../components/test-call-drawer";
 import { api, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
@@ -9,12 +12,13 @@ import { useResource } from "../../../lib/use-resource";
 import { useT, useStatusLabel } from "../../../lib/i18n";
 
 const STATUS_FILTERS = ["all", "completed", "queued", "dialing", "failed", "skipped"] as const;
+const POLL_MS = 10_000;
 
 export default function CallsPage() {
   const tenant = useTenantScope();
   const t = useT();
   const statusLabel = useStatusLabel();
-  const calls = useResource(() => api.calls(tenant), [tenant]);
+  const calls = useResource(() => api.calls(tenant), [tenant], { pollMs: POLL_MS });
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -32,6 +36,8 @@ export default function CallsPage() {
     return s === 0 ? `${m}m` : `${m}m ${s}s`;
   }
 
+  const hasAny = (calls.data?.length ?? 0) > 0;
+
   return (
     <>
       <div className="topbar">
@@ -41,6 +47,9 @@ export default function CallsPage() {
           <p className="subtle">{t("calls.subtitle")}</p>
         </div>
         <div className="actions">
+          <span className="refresh-dot" aria-live="polite">
+            {t("empty.live", { n: POLL_MS / 1000 })}
+          </span>
           <button className="button secondary" disabled>
             {t("btn.export")}
           </button>
@@ -65,14 +74,22 @@ export default function CallsPage() {
         </button>
       </div>
 
-      <div className="table-wrap">
-        {calls.loading ? (
-          <div className="empty-state">{t("calls.empty.loading")}</div>
-        ) : calls.error ? (
-          <div className="empty-state danger">{t("g.error")}: {calls.error}</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state">{t("calls.empty.nomatch")}</div>
-        ) : (
+      {calls.loading ? (
+        <TableSkeleton cols={8} rows={6} />
+      ) : calls.error ? (
+        <div className="empty-state danger">{t("g.error")}: {calls.error}</div>
+      ) : !hasAny ? (
+        <EmptyState
+          icon={PhoneCall}
+          title={t("calls.empty.full")}
+          description={t("calls.empty.desc")}
+          action={{ label: t("calls.btn.testcall"), onClick: () => setDrawerOpen(true) }}
+          secondary={{ label: t("calls.btn.gocampaigns"), href: "/portal/campaigns" }}
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState title={t("calls.empty.nomatch")} />
+      ) : (
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -115,8 +132,8 @@ export default function CallsPage() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       <TestCallDrawer
         open={drawerOpen}

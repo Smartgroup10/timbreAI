@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Home, Pencil, Plus, Trash2 } from "lucide-react";
+import { useConfirm } from "../../../components/confirm";
+import { EmptyState } from "../../../components/empty";
+import { CardGridSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, Property } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
@@ -15,10 +18,17 @@ export default function PropertiesPage() {
   const t = useT();
   const properties = useResource(() => api.properties(tenant), [tenant]);
   const toast = useToast();
+  const confirm = useConfirm();
   const [editor, setEditor] = useState<EditState>(null);
 
   async function handleDelete(property: Property) {
-    if (!confirm(t("properties.toast.delete_confirm", { name: property.name }))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("properties.toast.delete_confirm", { name: property.name }),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.deleteProperty(property.id, tenant);
       toast.push(t("properties.toast.deleted"), "success");
@@ -44,8 +54,17 @@ export default function PropertiesPage() {
         </div>
       </div>
 
-      {properties.loading ? <div className="empty-state">{t("g.loading")}</div> : null}
+      {properties.loading ? <CardGridSkeleton count={2} /> : null}
       {properties.error ? <div className="empty-state danger">{t("g.error")}: {properties.error}</div> : null}
+
+      {!properties.loading && !properties.error && (properties.data?.length ?? 0) === 0 ? (
+        <EmptyState
+          icon={Home}
+          title={t("properties.empty")}
+          description={t("properties.empty.desc")}
+          action={{ label: t("properties.btn.new"), onClick: () => setEditor({ property: null, mode: "create" }) }}
+        />
+      ) : null}
 
       <div className="grid two">
         {(properties.data ?? []).map((property) => (

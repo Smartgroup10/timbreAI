@@ -2,7 +2,10 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { PhoneCall, Trash2, Upload } from "lucide-react";
+import { PhoneCall, Trash2, Upload, Users } from "lucide-react";
+import { useConfirm } from "../../../components/confirm";
+import { EmptyState } from "../../../components/empty";
+import { TableSkeleton } from "../../../components/skeleton";
 import { TestCallDrawer } from "../../../components/test-call-drawer";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, ImportResult, Lead } from "../../../lib/api";
@@ -17,8 +20,9 @@ const LEAD_STATUSES = ["new", "qualified", "callback", "contacted", "do_not_call
 export default function LeadsPage() {
   const tenant = useTenantScope();
   const t = useT();
-  const leads = useResource(() => api.leads(tenant), [tenant]);
+  const leads = useResource(() => api.leads(tenant), [tenant], { pollMs: 30_000 });
   const toast = useToast();
+  const confirm = useConfirm();
   const [formOpen, setFormOpen] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [typeFilter, setTypeFilter] = useState<(typeof TYPE_FILTERS)[number]>("all");
@@ -88,7 +92,13 @@ export default function LeadsPage() {
   }
 
   async function handleDelete(lead: Lead) {
-    if (!confirm(t("leads.toast.delete_confirm", { name: lead.name }))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("leads.toast.delete_confirm", { name: lead.name }),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.deleteLead(lead.id, tenant);
       toast.push(t("leads.toast.deleted"), "success");
@@ -187,14 +197,22 @@ export default function LeadsPage() {
         />
       </div>
 
-      <div className="table-wrap">
-        {leads.loading ? (
-          <div className="empty-state">{t("leads.empty.loading")}</div>
-        ) : leads.error ? (
-          <div className="empty-state danger">{t("g.error")}: {leads.error}</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state">{t("leads.empty.nomatch")}</div>
-        ) : (
+      {leads.loading ? (
+        <TableSkeleton cols={8} rows={6} />
+      ) : leads.error ? (
+        <div className="empty-state danger">{t("g.error")}: {leads.error}</div>
+      ) : (leads.data?.length ?? 0) === 0 ? (
+        <EmptyState
+          icon={Users}
+          title={t("leads.empty")}
+          description={t("leads.empty.desc")}
+          action={{ label: t("leads.new"), onClick: () => setFormOpen(true) }}
+          secondary={{ label: t("leads.import"), onClick: () => fileRef.current?.click() }}
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState title={t("leads.empty.nomatch")} />
+      ) : (
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -249,8 +267,8 @@ export default function LeadsPage() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       <TestCallDrawer
         open={drawerLead !== null}

@@ -866,6 +866,29 @@ const ES: Dict = {
 
   // language switcher
   "lang.label": "Idioma",
+
+  // confirm modal
+  "confirm.confirm": "Confirmar",
+  "confirm.cancel": "Cancelar",
+  "confirm.delete": "Eliminar",
+
+  // empty-state CTAs y descriptions
+  "empty.refreshing": "Actualizando…",
+  "empty.live": "En vivo · refresca cada {n}s",
+
+  "campaigns.empty.desc": "Programa qué bot llama a qué leads y a qué hora. El worker respeta DNC, horarios y concurrencia automáticamente.",
+  "bots.empty.desc": "Cada bot conecta con un proveedor de voz (OpenAI Realtime, Deepgram, AssemblyAI) y opcionalmente con un DID saliente.",
+  "leads.empty.desc": "Carga contactos manualmente o importa un CSV con name,phone,email,type,source,consent.",
+  "calls.empty.full": "Aún no hay llamadas en este tenant. Lanza una campaña o usa el botón de llamada de prueba.",
+  "calls.empty.desc": "Lanza una llamada manualmente o activa una campaña para empezar a ver el historial aquí.",
+  "calls.btn.testcall": "Llamada de prueba",
+  "calls.btn.gocampaigns": "Ir a campañas",
+  "properties.empty.desc": "El bot solo menciona inmuebles que existan aquí — evita que invente precios o disponibilidad.",
+  "dnc.empty.desc": "Bloquea números que pidieron no recibir llamadas. El backend rechaza el originate antes de tocar Asterisk.",
+  "audit.empty.desc": "Cuando alguien edite bots, campañas, leads o DIDs, los eventos aparecerán aquí.",
+  "admin.tenants.empty.desc": "Cada tenant es un cliente aislado. Crea el primero para empezar a invitar usuarios.",
+  "admin.trunks.empty.desc": "Los trunks SIP son las conexiones a tu proveedor (Twilio, Vonage, Telnyx). Sin trunks, los bots no pueden llamar.",
+  "admin.dids.empty.desc": "Crea primero un trunk; después añade aquí los números E.164 que ese trunk puede usar.",
 };
 
 const EN: Dict = {
@@ -1716,6 +1739,29 @@ const EN: Dict = {
 
   // language switcher
   "lang.label": "Language",
+
+  // confirm modal
+  "confirm.confirm": "Confirm",
+  "confirm.cancel": "Cancel",
+  "confirm.delete": "Delete",
+
+  // empty-state CTAs y descriptions
+  "empty.refreshing": "Refreshing…",
+  "empty.live": "Live · refreshes every {n}s",
+
+  "campaigns.empty.desc": "Schedule which bot calls which leads at what time. The worker honors DNC, hours and concurrency automatically.",
+  "bots.empty.desc": "Each bot connects to a voice provider (OpenAI Realtime, Deepgram, AssemblyAI) and optionally to an outbound DID.",
+  "leads.empty.desc": "Add contacts manually or import a CSV with name,phone,email,type,source,consent.",
+  "calls.empty.full": "No calls in this tenant yet. Launch a campaign or use the test-call button.",
+  "calls.empty.desc": "Launch a call manually or activate a campaign to start seeing history here.",
+  "calls.btn.testcall": "Test call",
+  "calls.btn.gocampaigns": "Go to campaigns",
+  "properties.empty.desc": "The bot only mentions properties listed here — keeps it from making up prices or availability.",
+  "dnc.empty.desc": "Block numbers that asked not to be called. The backend rejects the originate before reaching Asterisk.",
+  "audit.empty.desc": "When someone edits bots, campaigns, leads or DIDs, the events will appear here.",
+  "admin.tenants.empty.desc": "Each tenant is an isolated customer. Create the first one to start inviting users.",
+  "admin.trunks.empty.desc": "SIP trunks are connections to your provider (Twilio, Vonage, Telnyx). Without trunks, bots can't dial.",
+  "admin.dids.empty.desc": "Create a trunk first; then add the E.164 numbers that trunk can use here.",
 };
 
 const TRANSLATIONS: Record<Lang, Dict> = { es: ES, en: EN };

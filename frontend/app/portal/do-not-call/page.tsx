@@ -1,17 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { PhoneOff } from "lucide-react";
+import { useConfirm } from "../../../components/confirm";
+import { EmptyState } from "../../../components/empty";
+import { TableSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 import { useT } from "../../../lib/i18n";
 
+const POLL_MS = 15_000;
+
 export default function DoNotCallPage() {
   const tenant = useTenantScope();
   const t = useT();
-  const dnc = useResource(() => api.dnc(tenant), [tenant]);
+  const dnc = useResource(() => api.dnc(tenant), [tenant], { pollMs: POLL_MS });
   const toast = useToast();
+  const confirm = useConfirm();
   const [phone, setPhone] = useState("");
   const [reason, setReason] = useState("opt_out");
   const [submitting, setSubmitting] = useState(false);
@@ -33,7 +40,12 @@ export default function DoNotCallPage() {
   }
 
   async function handleRemove(id: string, phoneNumber: string) {
-    if (!confirm(t("dnc.toast.remove_confirm", { phone: phoneNumber }))) return;
+    const ok = await confirm({
+      title: t("dnc.table.release"),
+      description: t("dnc.toast.remove_confirm", { phone: phoneNumber }),
+      confirmLabel: t("dnc.table.release"),
+    });
+    if (!ok) return;
     try {
       await api.removeDNC(id, tenant);
       toast.push(t("dnc.toast.removed"), "success");
@@ -52,6 +64,11 @@ export default function DoNotCallPage() {
           <p className="eyebrow">{t("portal.eyebrow")}</p>
           <h1>{t("dnc.title")}</h1>
           <p className="subtle">{t("dnc.subtitle.full")}</p>
+        </div>
+        <div className="actions">
+          <span className="refresh-dot" aria-live="polite">
+            {t("empty.live", { n: POLL_MS / 1000 })}
+          </span>
         </div>
       </div>
 
@@ -84,12 +101,16 @@ export default function DoNotCallPage() {
         </div>
       </form>
 
-      <div className="table-wrap">
-        {dnc.loading ? (
-          <div className="empty-state">{t("g.loading")}</div>
-        ) : entries.length === 0 ? (
-          <div className="empty-state">{t("dnc.table.empty")}</div>
-        ) : (
+      {dnc.loading ? (
+        <TableSkeleton cols={4} rows={4} />
+      ) : entries.length === 0 ? (
+        <EmptyState
+          icon={PhoneOff}
+          title={t("dnc.table.empty")}
+          description={t("dnc.empty.desc")}
+        />
+      ) : (
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -118,8 +139,8 @@ export default function DoNotCallPage() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }

@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, PhoneCall, Trash2 } from "lucide-react";
+import { useConfirm } from "../../../../components/confirm";
 import { TestCallDrawer } from "../../../../components/test-call-drawer";
 import { useToast } from "../../../../components/toast";
 import { api, ApiError, statusClass } from "../../../../lib/api";
@@ -18,8 +19,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const t = useT();
   const statusLabel = useStatusLabel();
   const lead = useResource(() => api.getLead(id, tenant), [id, tenant]);
-  const calls = useResource(() => api.leadCalls(id, tenant), [id, tenant]);
+  const calls = useResource(() => api.leadCalls(id, tenant), [id, tenant], { pollMs: 15_000 });
   const toast = useToast();
+  const confirm = useConfirm();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   async function handleStatus(status: string) {
@@ -35,7 +37,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   async function handleDelete() {
     if (!lead.data) return;
-    if (!confirm(t("leads.detail.delete.confirm", { name: lead.data.name }))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("leads.detail.delete.confirm", { name: lead.data.name }),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.deleteLead(id, tenant);
       toast.push(t("leads.toast.deleted"), "success");

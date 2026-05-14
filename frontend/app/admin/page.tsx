@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil } from "lucide-react";
+import { Building2, Plus, Pencil } from "lucide-react";
+import { EmptyState } from "../../components/empty";
+import { TableSkeleton } from "../../components/skeleton";
 import { useToast } from "../../components/toast";
 import { api, ApiError, Tenant, statusClass } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
@@ -14,7 +16,7 @@ export default function AdminPage() {
   const { user, setTenantOverride } = useAuth();
   const t = useT();
   const statusLabel = useStatusLabel();
-  const tenants = useResource(() => api.tenants(), []);
+  const tenants = useResource(() => api.tenants(), [], { pollMs: 30_000 });
   const [editor, setEditor] = useState<EditState>(null);
   const toast = useToast();
 
@@ -75,12 +77,19 @@ export default function AdminPage() {
         </section>
       </div>
 
-      <div className="table-wrap">
-        {tenants.loading ? (
-          <div className="empty-state">{t("g.loading")}</div>
-        ) : tenants.error ? (
-          <div className="empty-state danger">{t("g.error")}: {tenants.error}</div>
-        ) : (
+      {tenants.loading ? (
+        <TableSkeleton cols={6} rows={5} />
+      ) : tenants.error ? (
+        <div className="empty-state danger">{t("g.error")}: {tenants.error}</div>
+      ) : data.length === 0 ? (
+        <EmptyState
+          icon={Building2}
+          title={t("admin.tenants.empty")}
+          description={t("admin.tenants.empty.desc")}
+          action={{ label: t("admin.tenants.btn.create"), onClick: () => setEditor({ mode: "create" }) }}
+        />
+      ) : (
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -119,8 +128,8 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       {editor ? (
         <TenantEditor

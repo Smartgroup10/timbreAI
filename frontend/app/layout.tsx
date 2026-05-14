@@ -4,6 +4,7 @@ import { Inter_Tight } from "next/font/google";
 import { AuthProvider } from "../lib/auth-context";
 import { LangProvider } from "../lib/i18n";
 import { Chrome } from "../components/chrome";
+import { ConfirmProvider } from "../components/confirm";
 import { ToastProvider } from "../components/toast";
 
 const interTight = Inter_Tight({
@@ -26,7 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <LangProvider>
           <AuthProvider>
             <ToastProvider>
-              <Chrome>{children}</Chrome>
+              <ConfirmProvider>
+                <Chrome>{children}</Chrome>
+              </ConfirmProvider>
             </ToastProvider>
           </AuthProvider>
         </LangProvider>

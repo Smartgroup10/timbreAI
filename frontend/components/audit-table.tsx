@@ -1,7 +1,10 @@
 "use client";
 
+import { ClipboardList } from "lucide-react";
 import { AuditLogEntry } from "../lib/api";
 import { useT } from "../lib/i18n";
+import { EmptyState } from "./empty";
+import { TableSkeleton } from "./skeleton";
 
 export function AuditTable({ rows, loading, error, showTenant = false }: {
   rows: AuditLogEntry[];
@@ -17,9 +20,17 @@ export function AuditTable({ rows, loading, error, showTenant = false }: {
     return translated === key ? action : translated;
   }
 
-  if (loading) return <div className="empty-state">{t("audit.table.loading")}</div>;
+  if (loading) return <TableSkeleton cols={showTenant ? 6 : 5} rows={6} />;
   if (error) return <div className="empty-state danger">{t("g.error")}: {error}</div>;
-  if (rows.length === 0) return <div className="empty-state">{t("audit.table.empty")}</div>;
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={ClipboardList}
+        title={t("audit.table.empty")}
+        description={t("audit.empty.desc")}
+      />
+    );
+  }
 
   return (
     <div className="table-wrap">

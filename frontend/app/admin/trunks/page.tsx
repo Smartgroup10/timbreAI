@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Server } from "lucide-react";
+import { useConfirm } from "../../../components/confirm";
+import { EmptyState } from "../../../components/empty";
+import { TableSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, DID, SIPTrunk, Tenant, statusClass } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
@@ -26,6 +30,7 @@ export default function TrunksPage() {
   const [sipState, setSipState] = useState<Record<string, EndpointState>>({});
   const [ariEnabled, setAriEnabled] = useState<boolean | null>(null);
   const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     if (tab !== "trunks") return;
@@ -87,7 +92,13 @@ export default function TrunksPage() {
   }
 
   async function handleDeleteTrunk(id: string) {
-    if (!confirm(t("admin.trunks.toast.delete_confirm"))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("admin.trunks.toast.delete_confirm"),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.adminDeleteTrunk(id);
       toast.push(t("admin.trunks.toast.deleted"), "success");
@@ -137,7 +148,13 @@ export default function TrunksPage() {
   }
 
   async function handleDeleteDID(id: string) {
-    if (!confirm(t("admin.trunks.dids.toast.delete_confirm"))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("admin.trunks.dids.toast.delete_confirm"),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.adminDeleteDID(id);
       toast.push(t("admin.trunks.dids.toast.deleted"), "success");
@@ -189,12 +206,17 @@ export default function TrunksPage() {
             <p className="subtle" style={{ marginBottom: 0 }}>{t("admin.trunks.realtime.hint", { num: "{numero}" })}</p>
           </div>
 
-          <div className="table-wrap">
-            {trunks.loading ? (
-              <div className="empty-state">{t("g.loading")}</div>
-            ) : trunksData.length === 0 ? (
-              <div className="empty-state">{t("admin.trunks.empty.full")}</div>
-            ) : (
+          {trunks.loading ? (
+            <TableSkeleton cols={8} rows={4} />
+          ) : trunksData.length === 0 ? (
+            <EmptyState
+              icon={Server}
+              title={t("admin.trunks.empty.full")}
+              description={t("admin.trunks.empty.desc")}
+              action={{ label: t("admin.trunks.btn.newtrunk"), onClick: () => openTrunkForm() }}
+            />
+          ) : (
+            <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -258,8 +280,8 @@ export default function TrunksPage() {
                   })}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -273,12 +295,18 @@ export default function TrunksPage() {
             />
           ) : null}
 
-          <div className="table-wrap">
-            {dids.loading ? (
-              <div className="empty-state">{t("g.loading")}</div>
-            ) : didsData.length === 0 ? (
-              <div className="empty-state">{t("admin.trunks.dids.empty")}</div>
-            ) : (
+          {dids.loading ? (
+            <TableSkeleton cols={6} rows={5} />
+          ) : didsData.length === 0 ? (
+            <EmptyState
+              icon={Server}
+              title={t("admin.trunks.dids.empty")}
+              description={trunksData.length === 0 ? t("admin.dids.empty.desc") : t("admin.trunks.dids.empty")}
+              action={trunksData.length > 0 ? { label: t("admin.trunks.btn.adddid"), onClick: () => openDidForm() } : undefined}
+              secondary={trunksData.length === 0 ? { label: t("admin.trunks.btn.newtrunk"), onClick: () => setTab("trunks") } : undefined}
+            />
+          ) : (
+            <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -303,8 +331,8 @@ export default function TrunksPage() {
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
     </>

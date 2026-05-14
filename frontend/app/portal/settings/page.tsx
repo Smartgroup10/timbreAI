@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound, Trash2, UserPlus } from "lucide-react";
+import { useConfirm } from "../../../components/confirm";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, TenantSettings, User, VoiceCredentials } from "../../../lib/api";
 import { useAuth, useTenantScope } from "../../../lib/auth-context";
@@ -132,6 +133,7 @@ function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | unde
   const t = useT();
   const team = useResource(() => api.tenantUsers(tenant), [tenant]);
   const toast = useToast();
+  const confirm = useConfirm();
   const [formOpen, setFormOpen] = useState(false);
   const [tempPwd, setTempPwd] = useState<{ email: string; pwd: string } | null>(null);
 
@@ -159,7 +161,13 @@ function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | unde
   }
 
   async function handleDelete(u: User) {
-    if (!confirm(t("settings.team.toast.delete_confirm", { email: u.email }))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("settings.team.toast.delete_confirm", { email: u.email }),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.deleteTenantUser(u.id, tenant);
       toast.push(t("settings.team.toast.deleted"), "success");

@@ -9,7 +9,7 @@ import { useT } from "../../../lib/i18n";
 export default function TenantAuditPage() {
   const tenant = useTenantScope();
   const t = useT();
-  const audit = useResource(() => api.audit(tenant), [tenant]);
+  const audit = useResource(() => api.audit(tenant), [tenant], { pollMs: 20_000 });
 
   return (
     <>

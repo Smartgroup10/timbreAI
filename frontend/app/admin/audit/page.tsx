@@ -9,7 +9,7 @@ import { useT } from "../../../lib/i18n";
 export default function AdminAuditPage() {
   const { user } = useAuth();
   const t = useT();
-  const audit = useResource(() => api.adminAudit(), []);
+  const audit = useResource(() => api.adminAudit(), [], { pollMs: 20_000 });
 
   if (user && user.role !== "platform_admin") {
     return <div className="empty-state danger">{t("admin.tenants.access.denied")}</div>;

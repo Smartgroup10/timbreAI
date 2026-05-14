@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Pause, Play, Trash2, Users } from "lucide-react";
+import { Megaphone, Pause, Play, Trash2, Users } from "lucide-react";
+import { useConfirm } from "../../../components/confirm";
+import { EmptyState } from "../../../components/empty";
+import { CardGridSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, Bot, Call, Campaign, CampaignLead, Lead, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
@@ -31,11 +34,12 @@ export default function CampaignsPage() {
   const tenant = useTenantScope();
   const t = useT();
   const statusLabel = useStatusLabel();
-  const campaigns = useResource(() => api.campaigns(tenant), [tenant]);
+  const campaigns = useResource(() => api.campaigns(tenant), [tenant], { pollMs: 15_000 });
   const bots = useResource(() => api.bots(tenant), [tenant]);
   const [formOpen, setFormOpen] = useState(false);
   const [leadsDrawer, setLeadsDrawer] = useState<Campaign | null>(null);
   const toast = useToast();
+  const confirm = useConfirm();
 
   async function handleCreate(input: Partial<Campaign>) {
     try {
@@ -70,7 +74,13 @@ export default function CampaignsPage() {
   }
 
   async function handleDelete(c: Campaign) {
-    if (!confirm(t("campaigns.toast.delete_confirm", { name: c.name }))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("campaigns.toast.delete_confirm", { name: c.name }),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.deleteCampaign(c.id, tenant);
       toast.push(t("campaigns.toast.deleted"), "success");
@@ -96,6 +106,17 @@ export default function CampaignsPage() {
       </div>
 
       {formOpen ? <CampaignForm bots={bots.data ?? []} onSubmit={handleCreate} /> : null}
+
+      {campaigns.loading ? <CardGridSkeleton count={2} /> : null}
+
+      {!campaigns.loading && (campaigns.data?.length ?? 0) === 0 && !formOpen ? (
+        <EmptyState
+          icon={Megaphone}
+          title={t("campaigns.empty")}
+          description={t("campaigns.empty.desc")}
+          action={{ label: t("campaigns.new"), onClick: () => setFormOpen(true) }}
+        />
+      ) : null}
 
       <div className="grid two" style={{ marginBottom: 16 }}>
         {(campaigns.data ?? []).map((campaign) => (

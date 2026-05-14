@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Bot as BotIcon, Pencil, Plus, Trash2 } from "lucide-react";
+import { useConfirm } from "../../../components/confirm";
+import { EmptyState } from "../../../components/empty";
+import { CardGridSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, Bot, DID, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
@@ -28,6 +31,7 @@ export default function BotsPage() {
   const bots = useResource(() => api.bots(tenant), [tenant]);
   const dids = useResource(() => api.myDIDs(tenant), [tenant]);
   const toast = useToast();
+  const confirm = useConfirm();
   const [busyBot, setBusyBot] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditState>(null);
 
@@ -45,7 +49,13 @@ export default function BotsPage() {
   }
 
   async function handleDelete(bot: Bot) {
-    if (!confirm(t("bots.toast.delete_confirm", { name: bot.name }))) return;
+    const ok = await confirm({
+      title: t("btn.delete"),
+      description: t("bots.toast.delete_confirm", { name: bot.name }),
+      variant: "danger",
+      confirmLabel: t("btn.delete"),
+    });
+    if (!ok) return;
     try {
       await api.deleteBot(bot.id, tenant);
       toast.push(t("bots.toast.deleted"), "success");
@@ -81,8 +91,17 @@ export default function BotsPage() {
         </div>
       ) : null}
 
-      {bots.loading ? <div className="empty-state">{t("g.loading")}</div> : null}
+      {bots.loading ? <CardGridSkeleton count={2} /> : null}
       {bots.error ? <div className="empty-state danger">{t("g.error")}: {bots.error}</div> : null}
+
+      {!bots.loading && !bots.error && (bots.data?.length ?? 0) === 0 ? (
+        <EmptyState
+          icon={BotIcon}
+          title={t("bots.empty")}
+          description={t("bots.empty.desc")}
+          action={{ label: t("bots.btn.create"), onClick: () => setEditor({ bot: null, mode: "create" }) }}
+        />
+      ) : null}
 
       <div className="grid two">
         {(bots.data ?? []).map((bot) => (
