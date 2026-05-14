@@ -111,6 +111,21 @@ func DialCall(ctx context.Context, d DialDeps, call store.Call, botID string) (D
 			provider = "echo"
 		}
 
+		// Tools del bot — solo las habilitadas. Si falla la consulta seguimos
+		// (mejor sesión sin tools que sesión fallida).
+		var tools []voiceagent.Tool
+		if toolRows, err := d.Store.ListBotTools(ctx, call.TenantID, botID, true); err == nil {
+			for _, t := range toolRows {
+				tools = append(tools, voiceagent.Tool{
+					Name:        t.Name,
+					Description: t.Description,
+					Parameters:  t.ParametersSchema,
+				})
+			}
+		} else {
+			d.Logger.Warn("dial: list tools failed, continuing without", "bot", botID, "error", err)
+		}
+
 		vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		sess, err := d.VoiceAgent.CreateSession(vctx, voiceagent.Config{
 			CallID:      call.ID,
@@ -123,6 +138,7 @@ func DialCall(ctx context.Context, d DialDeps, call store.Call, botID string) (D
 			Voice:       bot.Voice,
 			LeadName:    call.LeadName,
 			Credentials: creds,
+			Tools:       tools,
 		})
 		cancel()
 		if err != nil {

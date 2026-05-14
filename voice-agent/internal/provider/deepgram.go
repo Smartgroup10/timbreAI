@@ -124,7 +124,7 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 					"model": listenModel,
 				},
 			},
-			"think": d.buildThinkSection(thinkProvider, thinkModel, openaiKey, SystemPrompt(s.Config)),
+			"think": d.buildThinkSection(thinkProvider, thinkModel, openaiKey, SystemPrompt(s.Config), s.Config.Tools),
 			"speak": map[string]any{
 				"provider": map[string]any{
 					"type":  "deepgram",
@@ -214,7 +214,7 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 				return ctx.Err()
 			}
 		case websocket.MessageText:
-			d.handleEvent(raw, s)
+			d.handleEvent(ctx, conn, raw, s)
 		}
 	}
 }
@@ -259,13 +259,28 @@ func waitDeepgramEvent(ctx context.Context, conn *websocket.Conn, expected strin
 // Si el operador no ha configurado la key del LLM externo, NO usamos endpoint
 // y dejamos que Deepgram intente con sus credenciales por defecto (puede
 // funcionar si el proyecto Deepgram tiene la integración pre-configurada).
-func (d *Deepgram) buildThinkSection(provider, model, externalKey, prompt string) map[string]any {
+//
+// Tools: si hay tools definidas en la sesión las añadimos como functions
+// en el think — Deepgram las pasa al LLM y nos devuelve FunctionCallRequest
+// cuando el LLM decide invocar alguna.
+func (d *Deepgram) buildThinkSection(provider, model, externalKey, prompt string, tools []session.Tool) map[string]any {
 	think := map[string]any{
 		"provider": map[string]any{
 			"type":  provider,
 			"model": model,
 		},
 		"prompt": prompt,
+	}
+	if len(tools) > 0 {
+		fns := make([]map[string]any, 0, len(tools))
+		for _, t := range tools {
+			fns = append(fns, map[string]any{
+				"name":        t.Name,
+				"description": t.Description,
+				"parameters":  t.Parameters,
+			})
+		}
+		think["functions"] = fns
 	}
 	if externalKey == "" {
 		return think
@@ -290,7 +305,7 @@ func (d *Deepgram) buildThinkSection(provider, model, externalKey, prompt string
 	return think
 }
 
-func (d *Deepgram) handleEvent(raw []byte, s *session.Session) {
+func (d *Deepgram) handleEvent(ctx context.Context, conn *websocket.Conn, raw []byte, s *session.Session) {
 	var probe struct {
 		Type string `json:"type"`
 	}
@@ -328,6 +343,26 @@ func (d *Deepgram) handleEvent(raw []byte, s *session.Session) {
 			emit(s, session.Event{Type: "transcript", Role: out, Text: ev.Content, Final: true})
 			s.AppendTranscript(out, ev.Content)
 		}
+	case "FunctionCallRequest":
+		// Schema: { type:"FunctionCallRequest", functions:[{id,name,arguments,client_side}] }
+		var fcr struct {
+			Functions []struct {
+				ID         string `json:"id"`
+				Name       string `json:"name"`
+				Arguments  string `json:"arguments"` // JSON-encoded string
+				ClientSide bool   `json:"client_side"`
+			} `json:"functions"`
+		}
+		if err := json.Unmarshal(raw, &fcr); err != nil {
+			d.logger.Warn("deepgram FunctionCallRequest parse", "error", err)
+			return
+		}
+		for _, fc := range fcr.Functions {
+			if !fc.ClientSide {
+				continue
+			}
+			d.handleFunctionCall(ctx, conn, s, fc.ID, fc.Name, fc.Arguments)
+		}
 	case "Error":
 		var ev struct {
 			Description string `json:"description"`
@@ -343,4 +378,34 @@ func (d *Deepgram) handleEvent(raw []byte, s *session.Session) {
 		_ = json.Unmarshal(raw, &ev)
 		d.logger.Info("deepgram agent warning", "desc", ev.Description)
 	}
+}
+
+// handleFunctionCall delega la invocación al backend via la session hook
+// y devuelve el resultado al Voice Agent como FunctionCallResponse. Lo
+// hacemos en goroutine para no bloquear el read loop principal — si la
+// tool tarda 5s el audio sigue fluyendo.
+func (d *Deepgram) handleFunctionCall(ctx context.Context, conn *websocket.Conn, s *session.Session, callID, name, argsJSON string) {
+	go func() {
+		// El payload "arguments" viene como string JSON-encoded.
+		args := map[string]any{}
+		if argsJSON != "" {
+			if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+				d.logger.Warn("deepgram function args parse", "tool", name, "error", err)
+			}
+		}
+		content, ok := s.InvokeTool(ctx, name, args)
+		if !ok {
+			d.logger.Warn("deepgram tool invoke failed", "tool", name)
+		}
+		// Respuesta al provider — el LLM la verá como output de la function.
+		resp := map[string]any{
+			"type":    "FunctionCallResponse",
+			"id":      callID,
+			"name":    name,
+			"content": content,
+		}
+		if err := writeJSON(ctx, conn, resp); err != nil {
+			d.logger.Warn("deepgram function response", "tool", name, "error", err)
+		}
+	}()
 }

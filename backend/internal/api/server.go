@@ -83,6 +83,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/bots/{id}", s.requireAuth(s.handleUpdateBot))
 	mux.HandleFunc("DELETE /api/bots/{id}", s.requireAuth(s.handleDeleteBot))
 	mux.HandleFunc("POST /api/bots/{id}/did", s.requireAuth(s.handleAssignBotDID))
+	// Tools (function calling) por bot.
+	mux.HandleFunc("GET /api/bots/{id}/tools", s.requireAuth(s.handleListBotTools))
+	mux.HandleFunc("POST /api/bots/{id}/tools", s.requireAuth(s.handleCreateBotTool))
+	mux.HandleFunc("PATCH /api/bots/{id}/tools/{toolId}", s.requireAuth(s.handleUpdateBotTool))
+	mux.HandleFunc("DELETE /api/bots/{id}/tools/{toolId}", s.requireAuth(s.handleDeleteBotTool))
 
 	mux.HandleFunc("GET /api/dids", s.requireAuth(s.handleTenantDIDs))
 
@@ -123,6 +128,7 @@ func (s *Server) Handler() http.Handler {
 	// Internal endpoints: only the voice-agent calls these, protected by shared secret.
 	mux.HandleFunc("POST /api/internal/voice/transcripts", s.requireInternalSecret(s.handleInternalTranscript))
 	mux.HandleFunc("POST /api/internal/voice/recordings", s.requireInternalSecret(s.handleInternalRecording))
+	mux.HandleFunc("POST /api/internal/voice/tool-invoke", s.requireInternalSecret(s.handleInternalToolInvoke))
 
 	mux.HandleFunc("GET /api/analytics", s.requireAuth(s.handleAnalytics))
 	mux.HandleFunc("GET /api/pricing", s.requireAuth(s.handlePricing))

@@ -137,6 +137,17 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			s.webhook.PostTranscript(ctx, webhook.TranscriptInput{SessionID: sessionID, Role: role, Text: text})
 		})
+		// Tools: cuando un provider emita un function_call, delegamos al backend
+		// que conoce la action_type/action_config y ejecuta la acción real.
+		sess.SetOnToolInvoke(func(ctx context.Context, sessionID, toolName string, args map[string]any) (string, bool) {
+			r, err := s.webhook.InvokeTool(ctx, webhook.ToolInvokeInput{
+				SessionID: sessionID, ToolName: toolName, Arguments: args,
+			})
+			if err != nil {
+				s.logger.Warn("tool invoke failed", "session", sessionID, "tool", toolName, "error", err)
+			}
+			return r.Content, r.Success
+		})
 	}
 	s.registry.Add(sess)
 	// Launch provider in background; it ends when the session is closed.

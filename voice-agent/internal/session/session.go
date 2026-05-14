@@ -33,6 +33,20 @@ type Config struct {
 	// Credentials are per-tenant overrides for the provider keys/models. Empty fields fall back
 	// to the voice-agent's env defaults.
 	Credentials Credentials `json:"credentials,omitempty"`
+
+	// Tools (function calling) que el LLM del provider puede invocar.
+	// Los pasamos verbatim al negociar Settings (Deepgram) o
+	// session.update.tools (OpenAI). Cuando el provider emita una
+	// invocación, el provider implementation llama a InvokeTool del
+	// session para que se ejecute via backend.
+	Tools []Tool `json:"tools,omitempty"`
+}
+
+// Tool es una function exponible al LLM. parameters es JSON Schema.
+type Tool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
 }
 
 type Credentials struct {
@@ -70,6 +84,7 @@ type Session struct {
 	closed       bool
 	onClose      func()
 	onTranscript func(sessionID, role, text string)
+	onToolInvoke func(ctx context.Context, sessionID, toolName string, args map[string]any) (content string, ok bool)
 
 	// Last transcripts, for inspection via HTTP API.
 	transcript []TranscriptLine
@@ -152,6 +167,29 @@ func (s *Session) SetOnTranscript(fn func(sessionID, role, text string)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onTranscript = fn
+}
+
+// SetOnToolInvoke installs a callback used by providers to dispatch function
+// calls coming from the LLM. fn devuelve el "content" textual que el provider
+// reenviará al LLM y un bool indicando si la invocación se ejecutó OK. Si
+// el handler está sin instalar (no hay backend), devolver ok=false para que
+// el provider responda al LLM con un fallback genérico.
+func (s *Session) SetOnToolInvoke(fn func(ctx context.Context, sessionID, toolName string, args map[string]any) (string, bool)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onToolInvoke = fn
+}
+
+// InvokeTool dispatcha al callback registrado o devuelve un fallback. Se
+// llama desde providers cuando reciben un function_call event.
+func (s *Session) InvokeTool(ctx context.Context, toolName string, args map[string]any) (string, bool) {
+	s.mu.Lock()
+	hook := s.onToolInvoke
+	s.mu.Unlock()
+	if hook == nil {
+		return "Action unavailable.", false
+	}
+	return hook(ctx, s.ID, toolName, args)
 }
 
 func (s *Session) Snapshot() ([]TranscriptLine, time.Time, bool) {

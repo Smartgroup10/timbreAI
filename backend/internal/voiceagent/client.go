@@ -41,6 +41,20 @@ type Config struct {
 
 	// Per-tenant overrides for provider credentials. Empty fields fall back to env defaults.
 	Credentials Credentials `json:"credentials,omitempty"`
+
+	// Tools (function calling) que el bot puede invocar. El voice-agent
+	// las pasa al provider en la negociación inicial; cuando el provider
+	// emite un function_call, el voice-agent llama a /api/internal/voice/tool-invoke.
+	Tools []Tool `json:"tools,omitempty"`
+}
+
+// Tool es la definición que se envía al provider de voz para function
+// calling. parameters es JSON Schema; los providers (OpenAI, Deepgram)
+// aceptan el mismo formato.
+type Tool struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
 }
 
 type Credentials struct {

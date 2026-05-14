@@ -154,6 +154,40 @@ type Overview struct {
 	QueuedCalls     int `json:"queuedCalls"`
 }
 
+// BotTool define una "function" que el LLM del bot puede invocar durante
+// una llamada (function calling / tool use). Cada provider de voz acepta
+// estas funciones en su Settings inicial. Cuando el LLM decide llamarla,
+// el voice-agent reenvía la petición al backend, que ejecuta el ActionType
+// correspondiente y devuelve el resultado al provider.
+type BotTool struct {
+	ID               string         `json:"id"`
+	TenantID         string         `json:"tenantId"`
+	BotID            string         `json:"botId"`
+	Name             string         `json:"name"`        // "set_qualified", "schedule_visit"
+	Description      string         `json:"description"` // lo que lee el LLM para decidir cuándo llamar
+	ParametersSchema map[string]any `json:"parametersSchema"`
+	ActionType       string         `json:"actionType"`
+	ActionConfig     map[string]any `json:"actionConfig"`
+	Enabled          bool           `json:"enabled"`
+	CreatedAt        time.Time      `json:"createdAt"`
+	UpdatedAt        time.Time      `json:"updatedAt"`
+}
+
+// BotToolInvocation registra cada vez que el LLM invocó una tool durante
+// una llamada — útil para auditar y debuggear comportamiento del bot.
+type BotToolInvocation struct {
+	ID        string         `json:"id"`
+	TenantID  string         `json:"tenantId"`
+	CallID    *string        `json:"callId,omitempty"`
+	BotToolID *string        `json:"botToolId,omitempty"`
+	ToolName  string         `json:"toolName"`
+	Arguments map[string]any `json:"arguments"`
+	Result    map[string]any `json:"result"`
+	Success   bool           `json:"success"`
+	Error     string         `json:"error,omitempty"`
+	CreatedAt time.Time      `json:"createdAt"`
+}
+
 type DoNotCallEntry struct {
 	ID        string    `json:"id"`
 	TenantID  string    `json:"tenantId"`
