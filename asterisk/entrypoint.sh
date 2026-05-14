@@ -165,16 +165,16 @@ exten => _X.,1,NoOp(Inbound desde trunk SIP a \${EXTEN})
  same => n,Hangup()
 
 ; ── AudioSocket bridge ──────────────────────────────────────────────────
-; El backend origina Local/<voiceSessionID>@audiosocket-bridge cuando arranca
-; una llamada. La extensión llama a AudioSocket() pasando el sessionID como
-; UUID — el voice-agent lo usa para identificar qué Session de su registry
-; debe conectar con esta tubería de audio TCP.
+; El backend origina Local/audiosocket@audiosocket-bridge y pasa el UUID
+; de la voice-agent session como channel variable __TIMBRE_AS_UUID. El
+; prefijo "__" hace que la var herede al lado ";2" del Local channel
+; (el que ejecuta este dialplan). EXTEN siempre vale "audiosocket" —
+; extensión fija, sin patrones especiales que rompan con UUIDs.
 [audiosocket-bridge]
-exten => _.,1,Verbose(1,AudioSocket bridge ENTER for session \${EXTEN})
- same => n,Verbose(1,Channel state=\${CHANNEL(state)} format=\${CHANNEL(audionativeformat)})
+exten => audiosocket,1,Verbose(1,AudioSocket bridge ENTER uuid=\${TIMBRE_AS_UUID})
  same => n,Answer()
- same => n,Verbose(1,Answered. About to call AudioSocket(\${EXTEN}, ${AUDIOSOCKET_HOST:-voice-agent}:${AUDIOSOCKET_PORT:-9092}))
- same => n,AudioSocket(\${EXTEN},${AUDIOSOCKET_HOST:-voice-agent}:${AUDIOSOCKET_PORT:-9092})
+ same => n,Verbose(1,Answered. Calling AudioSocket(\${TIMBRE_AS_UUID}, ${AUDIOSOCKET_HOST:-voice-agent}:${AUDIOSOCKET_PORT:-9092}))
+ same => n,AudioSocket(\${TIMBRE_AS_UUID},${AUDIOSOCKET_HOST:-voice-agent}:${AUDIOSOCKET_PORT:-9092})
  same => n,Verbose(1,AudioSocket returned. AUDIOSOCKET_STATUS=\${AUDIOSOCKET_STATUS})
  same => n,Hangup()
 EOF
@@ -262,6 +262,9 @@ noload = format_ogg_vorbis.so
 EOF
 
 # Permisos.
+# cdr_csv intenta escribir /var/log/asterisk/cdr-csv/Master.csv y falla si
+# el directorio no existe. Lo creamos antes del chown.
+mkdir -p /var/log/asterisk/cdr-csv /var/log/asterisk/cel-csv
 chown -R asterisk:asterisk /etc/asterisk /var/run/asterisk /var/log/asterisk /var/spool/asterisk 2>/dev/null || true
 
 echo "==> [entrypoint] config rendered:"
