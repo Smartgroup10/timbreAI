@@ -302,6 +302,12 @@ func (d *Deepgram) handleEvent(raw []byte, s *session.Session) {
 		// no-op; could surface as status if we wanted
 	case "UserStartedSpeaking":
 		emit(s, session.Event{Type: "status", State: "listening"})
+		// Barge-in: el usuario interrumpe al agente. Vaciamos el canal de
+		// audio TTS pendiente para que el AudioSocket deje de mandar frames
+		// al caller en cuanto detecta voz. Sin esto, si el agente está en
+		// medio de una frase larga, el caller la sigue oyendo varios cientos
+		// de ms después de empezar a hablar — UX de "robot que no escucha".
+		flushAudioOut(s)
 	case "AgentThinking":
 		emit(s, session.Event{Type: "status", State: "thinking"})
 	case "AgentStartedSpeaking":

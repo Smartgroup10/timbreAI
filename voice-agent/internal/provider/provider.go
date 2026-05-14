@@ -92,3 +92,21 @@ func (r *Registry) Names() []string {
 	}
 	return out
 }
+
+// flushAudioOut drena el canal de audio TTS pendiente. Lo usamos para
+// implementar barge-in: cuando el provider detecta que el usuario empezó
+// a hablar, descartamos cualquier frame de audio del agente que aún no
+// haya salido al caller, de forma que el sender de AudioSocket deje de
+// transmitir TTS "viejo" casi al instante.
+//
+// Non-blocking: si no hay frames, sale al toque.
+func flushAudioOut(s *session.Session) {
+	for {
+		select {
+		case <-s.AudioOut:
+			// descartado
+		default:
+			return
+		}
+	}
+}
