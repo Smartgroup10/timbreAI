@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -13,6 +14,25 @@ import (
 	"timbre/voice-agent/internal/config"
 	"timbre/voice-agent/internal/session"
 )
+
+// deepgramLang normaliza el locale del bot ("es-ES", "en-US", "PT-br")
+// al código corto que espera la API de Deepgram Voice Agent (ISO 639-1
+// en minúsculas: "es", "en", "pt"). Vacío → "en" como en smartsip.
+//
+// SIN este campo el listen (ASR) usa el default de Deepgram (inglés),
+// así que aunque el TTS sea aura-2-celeste-es el bot no entiende lo que
+// dice el usuario en español. Es el bug "el bot no me escucha" en
+// llamadas en castellano.
+func deepgramLang(locale string) string {
+	locale = strings.TrimSpace(locale)
+	if locale == "" {
+		return "en"
+	}
+	if i := strings.IndexAny(locale, "-_"); i > 0 {
+		locale = locale[:i]
+	}
+	return strings.ToLower(locale)
+}
 
 // Deepgram talks to the Voice Agent WebSocket API end-to-end:
 //   wss://agent.deepgram.com/v1/agent/converse
@@ -94,13 +114,17 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 			},
 		},
 		"agent": map[string]any{
+			// "language" CONFIGURA EL ASR — sin esto Deepgram usa "en" por
+			// defecto y el listen no entiende español (bug "el bot no me oye").
+			// Patrón equivalente al de smartsip/services/go-service/.../deepgram_agent.go.
+			"language": deepgramLang(s.Config.Language),
 			"listen": map[string]any{
 				"provider": map[string]any{
 					"type":  "deepgram",
 					"model": listenModel,
 				},
 			},
-			"think":    d.buildThinkSection(thinkProvider, thinkModel, openaiKey, SystemPrompt(s.Config)),
+			"think": d.buildThinkSection(thinkProvider, thinkModel, openaiKey, SystemPrompt(s.Config)),
 			"speak": map[string]any{
 				"provider": map[string]any{
 					"type":  "deepgram",
