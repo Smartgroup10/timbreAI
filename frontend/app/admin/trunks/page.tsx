@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, DID, SIPTrunk, Tenant, statusClass, statusLabel } from "../../../lib/api";
+import { api, ApiError, DID, SIPTrunk, Tenant, statusClass } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+import { useT, useStatusLabel } from "../../../lib/i18n";
 
 type Tab = "trunks" | "dids";
 
@@ -12,6 +13,8 @@ type EndpointState = { state: string; channels: number };
 
 export default function TrunksPage() {
   const { user } = useAuth();
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const trunks = useResource(() => api.adminTrunks(), []);
   const dids = useResource(() => api.adminDIDs(), []);
   const tenants = useResource(() => api.tenants(), []);
@@ -24,8 +27,6 @@ export default function TrunksPage() {
   const [ariEnabled, setAriEnabled] = useState<boolean | null>(null);
   const toast = useToast();
 
-  // Poll real-time SIP registration state from Asterisk every 10s while the
-  // trunks tab is visible. Cheap call (HTTP to ARI on the docker network).
   useEffect(() => {
     if (tab !== "trunks") return;
     let cancelled = false;
@@ -52,7 +53,7 @@ export default function TrunksPage() {
   }, [tab]);
 
   if (user && user.role !== "platform_admin") {
-    return <div className="empty-state danger">Acceso restringido al rol platform_admin.</div>;
+    return <div className="empty-state danger">{t("admin.tenants.access.denied")}</div>;
   }
 
   function reloadAll() {
@@ -73,26 +74,26 @@ export default function TrunksPage() {
     try {
       if (editingTrunk) {
         await api.adminUpdateTrunk(editingTrunk.id, input);
-        toast.push("Trunk actualizado", "success");
+        toast.push(t("admin.trunks.toast.updated"), "success");
       } else {
         await api.adminCreateTrunk(input);
-        toast.push("Trunk creado", "success");
+        toast.push(t("admin.trunks.toast.created"), "success");
       }
       closeTrunkForm();
       reloadAll();
     } catch (err) {
-      toast.push(`No se pudo guardar: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("admin.trunks.toast.save_failed", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handleDeleteTrunk(id: string) {
-    if (!confirm("Eliminar trunk? Solo es posible si no tiene DIDs asociados.")) return;
+    if (!confirm(t("admin.trunks.toast.delete_confirm"))) return;
     try {
       await api.adminDeleteTrunk(id);
-      toast.push("Trunk eliminado", "success");
+      toast.push(t("admin.trunks.toast.deleted"), "success");
       reloadAll();
     } catch (err) {
-      toast.push(`No se pudo eliminar: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("admin.trunks.toast.delete_failed", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
@@ -113,36 +114,36 @@ export default function TrunksPage() {
           label: input.label,
           status: input.status,
         });
-        toast.push("DID actualizado", "success");
+        toast.push(t("admin.trunks.dids.toast.updated"), "success");
       } else {
         await api.adminCreateDID(input);
-        toast.push("DID añadido", "success");
+        toast.push(t("admin.trunks.dids.toast.created"), "success");
       }
       closeDidForm();
       reloadAll();
     } catch (err) {
-      toast.push(`No se pudo guardar: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("admin.trunks.toast.save_failed", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handleAssignDID(id: string, tenantId: string | null) {
     try {
       await api.adminAssignDID(id, tenantId);
-      toast.push(tenantId ? "DID asignado" : "DID liberado al pool", "success");
+      toast.push(tenantId ? t("admin.trunks.dids.toast.assigned") : t("admin.trunks.dids.toast.released"), "success");
       dids.reload();
     } catch (err) {
-      toast.push(`No se pudo asignar: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("admin.trunks.dids.toast.assign_failed", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handleDeleteDID(id: string) {
-    if (!confirm("Eliminar este DID? Se desasigna del bot si lo tiene.")) return;
+    if (!confirm(t("admin.trunks.dids.toast.delete_confirm"))) return;
     try {
       await api.adminDeleteDID(id);
-      toast.push("DID eliminado", "success");
+      toast.push(t("admin.trunks.dids.toast.deleted"), "success");
       reloadAll();
     } catch (err) {
-      toast.push(`No se pudo eliminar: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("admin.trunks.toast.delete_failed", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
@@ -154,21 +155,18 @@ export default function TrunksPage() {
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Admin interno</p>
-          <h1>Trunks SIP y DIDs</h1>
-          <p className="subtle">
-            Configura los trunks de tu proveedor SIP y los numeros (DIDs) que asignas a cada cliente. Cada tenant decide
-            que DID usa cada bot.
-          </p>
+          <p className="eyebrow">{t("admin.eyebrow")}</p>
+          <h1>{t("nav.trunks")}</h1>
+          <p className="subtle">{t("admin.trunks.subtitle.full")}</p>
         </div>
         <div className="actions">
           {tab === "trunks" ? (
             <button className="button" onClick={() => (trunkFormOpen ? closeTrunkForm() : openTrunkForm())}>
-              {trunkFormOpen ? "Cancelar" : "Nuevo trunk"}
+              {trunkFormOpen ? t("admin.trunks.btn.cancel") : t("admin.trunks.btn.newtrunk")}
             </button>
           ) : (
             <button className="button" onClick={() => (didFormOpen ? closeDidForm() : openDidForm())}>
-              {didFormOpen ? "Cancelar" : "Añadir DID"}
+              {didFormOpen ? t("admin.trunks.btn.cancel") : t("admin.trunks.btn.adddid")}
             </button>
           )}
         </div>
@@ -176,10 +174,10 @@ export default function TrunksPage() {
 
       <div className="filter-row">
         <button className={`chip-button${tab === "trunks" ? " active" : ""}`} onClick={() => setTab("trunks")}>
-          Trunks ({trunksData.length})
+          {t("admin.trunks.tab.trunks", { n: trunksData.length })}
         </button>
         <button className={`chip-button${tab === "dids" ? " active" : ""}`} onClick={() => setTab("dids")}>
-          DIDs ({didsData.length})
+          {t("admin.trunks.tab.dids", { n: didsData.length })}
         </button>
       </div>
 
@@ -188,30 +186,29 @@ export default function TrunksPage() {
           {trunkFormOpen ? <TrunkForm initial={editingTrunk ?? undefined} onSubmit={handleSaveTrunk} onCancel={closeTrunkForm} /> : null}
 
           <div className="panel" style={{ marginBottom: 16 }}>
-            <p className="subtle" style={{ marginBottom: 0 }}>
-              Asterisk lee los trunks <strong>en vivo desde Postgres</strong> (PJSIP Realtime). Al crear o editar
-              un trunk aquí, los cambios se aplican sin reiniciar Asterisk. El campo <code>endpoint</code> es el
-              identificador interno que usarás en la marcación (p.ej. <code>PJSIP/{`{numero}`}@twilio-eu</code>).
-            </p>
+            <p className="subtle" style={{ marginBottom: 0 }}>{t("admin.trunks.realtime.hint", { num: "{numero}" })}</p>
           </div>
 
           <div className="table-wrap">
             {trunks.loading ? (
-              <div className="empty-state">Cargando…</div>
+              <div className="empty-state">{t("g.loading")}</div>
             ) : trunksData.length === 0 ? (
-              <div className="empty-state">Aun no hay trunks. Crea el primero.</div>
+              <div className="empty-state">{t("admin.trunks.empty.full")}</div>
             ) : (
               <table>
                 <thead>
                   <tr>
-                    <th>Nombre</th>
-                    <th>Proveedor</th>
-                    <th>Endpoint</th>
-                    <th>Host</th>
-                    <th>Estado app</th>
-                    <th>Estado SIP {ariEnabled === false ? <span className="subtle">(ARI off)</span> : null}</th>
-                    <th>DIDs</th>
-                    <th>Acción</th>
+                    <th>{t("admin.trunks.col.name")}</th>
+                    <th>{t("admin.trunks.col.provider")}</th>
+                    <th>{t("admin.trunks.col.endpoint")}</th>
+                    <th>{t("admin.trunks.col.host")}</th>
+                    <th>{t("admin.trunks.col.appstate")}</th>
+                    <th>
+                      {t("admin.trunks.col.sipstate")}{" "}
+                      {ariEnabled === false ? <span className="subtle">{t("admin.trunks.col.ariofflabel")}</span> : null}
+                    </th>
+                    <th>{t("admin.trunks.col.dids")}</th>
+                    <th>{t("admin.trunks.col.action")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -237,21 +234,23 @@ export default function TrunksPage() {
                           <SipStateBadge state={sip?.state} ariEnabled={ariEnabled} />
                           {sip && sip.channels > 0 ? (
                             <span className="subtle" style={{ marginLeft: 8 }}>
-                              {sip.channels} llamada{sip.channels === 1 ? "" : "s"}
+                              {sip.channels === 1
+                                ? t("admin.trunks.callcount.one", { n: sip.channels })
+                                : t("admin.trunks.callcount.many", { n: sip.channels })}
                             </span>
                           ) : null}
                         </td>
                         <td>{trunk.didCount}</td>
                         <td>
                           <button className="button ghost compact" onClick={() => openTrunkForm(trunk)}>
-                            Editar
+                            {t("admin.trunks.btn.edit")}
                           </button>
                           <button
                             className="button ghost compact"
                             style={{ marginLeft: 6 }}
                             onClick={() => handleDeleteTrunk(trunk.id)}
                           >
-                            Eliminar
+                            {t("admin.trunks.btn.delete")}
                           </button>
                         </td>
                       </tr>
@@ -276,19 +275,19 @@ export default function TrunksPage() {
 
           <div className="table-wrap">
             {dids.loading ? (
-              <div className="empty-state">Cargando…</div>
+              <div className="empty-state">{t("g.loading")}</div>
             ) : didsData.length === 0 ? (
-              <div className="empty-state">Aun no hay DIDs. Crea trunks y añade numeros.</div>
+              <div className="empty-state">{t("admin.trunks.dids.empty")}</div>
             ) : (
               <table>
                 <thead>
                   <tr>
-                    <th>Numero</th>
-                    <th>Etiqueta</th>
-                    <th>Trunk</th>
-                    <th>Tenant</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
+                    <th>{t("admin.trunks.dids.col.number")}</th>
+                    <th>{t("admin.trunks.dids.col.label")}</th>
+                    <th>{t("admin.trunks.dids.col.trunk")}</th>
+                    <th>{t("admin.trunks.dids.col.tenant")}</th>
+                    <th>{t("admin.trunks.dids.col.status")}</th>
+                    <th>{t("admin.trunks.dids.col.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -321,6 +320,7 @@ function TrunkForm({
   onSubmit: (input: Partial<SIPTrunk>) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const editing = Boolean(initial);
   const [name, setName] = useState(initial?.name ?? "");
   const [provider, setProvider] = useState(initial?.provider || "twilio");
@@ -328,8 +328,6 @@ function TrunkForm({
   const [host, setHost] = useState(initial?.host ?? "");
   const [port, setPort] = useState(initial?.port ?? 5060);
   const [username, setUsername] = useState(initial?.username ?? "");
-  // Al editar, el backend nos devuelve "********" como password. Dejamos el
-  // campo vacío y un placeholder claro: si no se rellena, conservamos el actual.
   const [password, setPassword] = useState("");
   const [register, setRegister] = useState(initial ? initial.register : true);
   const [identifyIp, setIdentifyIp] = useState(initial?.identifyIp ?? "");
@@ -361,27 +359,27 @@ function TrunkForm({
     >
       <div className="panel-header">
         <div>
-          <p className="eyebrow">{editing ? "Editar trunk" : "Nuevo trunk"}</p>
-          <h2>{editing ? `${initial?.name}` : "Conectar proveedor SIP"}</h2>
+          <p className="eyebrow">{editing ? t("admin.trunks.form.edit.eyebrow") : t("admin.trunks.form.new.eyebrow")}</p>
+          <h2>{editing ? `${initial?.name}` : t("admin.trunks.form.new.title")}</h2>
         </div>
       </div>
       <div className="form-grid">
         <div className="field">
-          <label>Nombre interno</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Twilio Europe" />
+          <label>{t("admin.trunks.form.name")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder={t("admin.trunks.form.name.placeholder")} />
         </div>
         <div className="field">
-          <label>Proveedor</label>
+          <label>{t("admin.trunks.form.provider")}</label>
           <select value={provider} onChange={(e) => setProvider(e.target.value)}>
             <option value="twilio">Twilio</option>
             <option value="vonage">Vonage</option>
             <option value="telnyx">Telnyx</option>
-            <option value="internal">Interno / sandbox</option>
-            <option value="custom">Custom</option>
+            <option value="internal">{t("admin.trunks.form.provider.internal")}</option>
+            <option value="custom">{t("admin.trunks.form.provider.custom")}</option>
           </select>
         </div>
         <div className="field">
-          <label>Endpoint (identificador interno)</label>
+          <label>{t("admin.trunks.form.endpoint")}</label>
           <input
             value={asteriskEndpoint}
             onChange={(e) => setAsteriskEndpoint(e.target.value)}
@@ -390,35 +388,35 @@ function TrunkForm({
           />
         </div>
         <div className="field">
-          <label>Host del proveedor</label>
+          <label>{t("admin.trunks.form.host")}</label>
           <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="sip.twilio.com" />
         </div>
         <div className="field">
-          <label>Puerto</label>
+          <label>{t("admin.trunks.form.port")}</label>
           <input type="number" value={port} onChange={(e) => setPort(parseInt(e.target.value, 10) || 5060)} />
         </div>
         <div className="field">
-          <label>Usuario SIP</label>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ACxxxxxxx (Twilio SID)" />
+          <label>{t("admin.trunks.form.user")}</label>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t("admin.trunks.form.user.placeholder")} />
         </div>
         <div className="field">
-          <label>Contraseña SIP</label>
+          <label>{t("admin.trunks.form.password")}</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={editing ? "Dejar vacío = conservar la actual" : "••••••••"}
+            placeholder={editing ? t("admin.trunks.form.password.keep") : "••••••••"}
           />
         </div>
         <div className="field">
-          <label>Modo de autenticación</label>
+          <label>{t("admin.trunks.form.authmode")}</label>
           <select value={register ? "register" : "identify"} onChange={(e) => setRegister(e.target.value === "register")}>
-            <option value="register">REGISTER (Twilio Programmable Voice, Vonage)</option>
-            <option value="identify">IP Identify (Twilio Elastic SIP Trunking, Telnyx)</option>
+            <option value="register">{t("admin.trunks.form.authmode.register")}</option>
+            <option value="identify">{t("admin.trunks.form.authmode.identify")}</option>
           </select>
         </div>
         <div className="field">
-          <label>IP del proveedor (solo modo Identify)</label>
+          <label>{t("admin.trunks.form.identifyip")}</label>
           <input
             value={identifyIp}
             onChange={(e) => setIdentifyIp(e.target.value)}
@@ -427,16 +425,16 @@ function TrunkForm({
           />
         </div>
         <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label>Notas</label>
+          <label>{t("admin.trunks.form.notes")}</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </div>
       </div>
       <div className="actions" style={{ marginTop: 12, gap: 8 }}>
         <button type="button" className="button ghost" onClick={onCancel} disabled={submitting}>
-          Cancelar
+          {t("admin.trunks.btn.cancel")}
         </button>
         <button className="button" disabled={submitting}>
-          {submitting ? "Guardando…" : editing ? "Guardar cambios" : "Crear trunk"}
+          {submitting ? t("admin.trunks.form.submitting") : editing ? t("admin.trunks.form.submit.edit") : t("admin.trunks.form.submit.create")}
         </button>
       </div>
     </form>
@@ -456,6 +454,7 @@ function DIDForm({
   onSubmit: (input: Parameters<typeof api.adminCreateDID>[0]) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const editing = Boolean(initial);
   const [trunkId, setTrunkId] = useState(initial?.trunkId ?? trunks[0]?.id ?? "");
   const [e164, setE164] = useState(initial?.e164 ?? "");
@@ -467,7 +466,7 @@ function DIDForm({
   if (trunks.length === 0) {
     return (
       <div className="empty-state" style={{ marginBottom: 16 }}>
-        Crea primero un trunk antes de añadir DIDs.
+        {t("admin.trunks.dids.form.notrunks")}
       </div>
     );
   }
@@ -491,64 +490,60 @@ function DIDForm({
     >
       <div className="panel-header">
         <div>
-          <p className="eyebrow">{editing ? "Editar DID" : "Nuevo DID"}</p>
-          <h2>{editing ? initial?.e164 : "Añadir numero"}</h2>
+          <p className="eyebrow">{editing ? t("admin.trunks.dids.form.edit.eyebrow") : t("admin.trunks.dids.form.new.eyebrow")}</p>
+          <h2>{editing ? initial?.e164 : t("admin.trunks.dids.form.new.title")}</h2>
         </div>
       </div>
       <div className="form-grid">
         <div className="field">
-          <label>Numero E.164</label>
+          <label>{t("admin.trunks.dids.form.e164")}</label>
           <input value={e164} onChange={(e) => setE164(e.target.value)} required placeholder="+34911000000" />
         </div>
         <div className="field">
-          <label>Etiqueta</label>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Madrid - alquiler" />
+          <label>{t("admin.trunks.dids.form.label")}</label>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t("admin.trunks.dids.form.label.placeholder")} />
         </div>
         <div className="field">
-          <label>Trunk</label>
+          <label>{t("admin.trunks.dids.form.trunk")}</label>
           <select value={trunkId} onChange={(e) => setTrunkId(e.target.value)} required disabled={editing}>
-            {trunks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.asteriskEndpoint})
+            {trunks.map((tr) => (
+              <option key={tr.id} value={tr.id}>
+                {tr.name} ({tr.asteriskEndpoint})
               </option>
             ))}
           </select>
           {editing ? (
-            <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
-              El trunk no se puede cambiar tras crear el DID.
-            </p>
+            <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>{t("admin.trunks.dids.form.trunk.locked")}</p>
           ) : null}
         </div>
         <div className="field">
-          <label>Asignar a tenant (opcional)</label>
+          <label>{t("admin.trunks.dids.form.tenant")}</label>
           <select value={tenantId ?? ""} onChange={(e) => setTenantId(e.target.value)} disabled={editing}>
-            <option value="">— Sin asignar (pool) —</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            <option value="">{t("admin.trunks.dids.form.tenant.unassigned")}</option>
+            {tenants.map((tn) => (
+              <option key={tn.id} value={tn.id}>
+                {tn.name}
               </option>
             ))}
           </select>
           {editing ? (
-            <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
-              Asigna desde el selector de la fila.
-            </p>
+            <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>{t("admin.trunks.dids.form.tenant.locked")}</p>
           ) : null}
         </div>
         <div className="field">
-          <label>Estado</label>
+          <label>{t("admin.trunks.dids.form.status")}</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="active">Activo</option>
-            <option value="disabled">Deshabilitado</option>
+            <option value="active">{t("admin.trunks.dids.form.status.active")}</option>
+            <option value="disabled">{t("admin.trunks.dids.form.status.disabled")}</option>
           </select>
         </div>
       </div>
       <div className="actions" style={{ marginTop: 12, gap: 8 }}>
         <button type="button" className="button ghost" onClick={onCancel} disabled={submitting}>
-          Cancelar
+          {t("admin.trunks.btn.cancel")}
         </button>
         <button className="button" disabled={submitting}>
-          {submitting ? "Guardando…" : editing ? "Guardar cambios" : "Añadir DID"}
+          {submitting ? t("admin.trunks.form.submitting") : editing ? t("admin.trunks.dids.form.submit.edit") : t("admin.trunks.dids.form.submit.create")}
         </button>
       </div>
     </form>
@@ -556,15 +551,15 @@ function DIDForm({
 }
 
 function SipStateBadge({ state, ariEnabled }: { state?: string; ariEnabled: boolean | null }) {
+  const t = useT();
   if (ariEnabled === false) {
     return <span className="status">—</span>;
   }
   if (!state) {
-    // ARI activo pero Asterisk no lo ve aún (caché, o trunk recién creado).
-    return <span className="status warn">desconocido</span>;
+    return <span className="status warn">{t("admin.trunks.sipstate.unknown")}</span>;
   }
-  if (state === "online") return <span className="status good">registrado</span>;
-  if (state === "offline") return <span className="status danger">caído</span>;
+  if (state === "online") return <span className="status good">{t("admin.trunks.sipstate.registered")}</span>;
+  if (state === "offline") return <span className="status danger">{t("admin.trunks.sipstate.down")}</span>;
   return <span className="status">{state}</span>;
 }
 
@@ -581,6 +576,8 @@ function DIDRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const t = useT();
+  const statusLabel = useStatusLabel();
   return (
     <tr>
       <td className="primary-cell">
@@ -596,10 +593,10 @@ function DIDRow({
           onChange={(e) => onAssign(e.target.value || null)}
           className="inline-select"
         >
-          <option value="">— Pool —</option>
-          {tenants.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
+          <option value="">{t("admin.trunks.dids.pool")}</option>
+          {tenants.map((tn) => (
+            <option key={tn.id} value={tn.id}>
+              {tn.name}
             </option>
           ))}
         </select>
@@ -609,10 +606,10 @@ function DIDRow({
       </td>
       <td>
         <button className="button ghost compact" onClick={onEdit}>
-          Editar
+          {t("admin.trunks.btn.edit")}
         </button>
         <button className="button ghost compact" style={{ marginLeft: 6 }} onClick={onDelete}>
-          Eliminar
+          {t("admin.trunks.btn.delete")}
         </button>
       </td>
     </tr>

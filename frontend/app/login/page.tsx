@@ -4,11 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
+import { useT, useLang } from "../../lib/i18n";
 import { BrandMark } from "../../components/logo";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
+  const t = useT();
+  const { lang, setLang } = useLang();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -23,9 +26,11 @@ export default function LoginPage() {
       router.replace(user.role === "platform_admin" ? "/admin" : "/portal");
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(translateError(err.code));
+        const key = `login.err.${err.code}`;
+        const translated = t(key);
+        setError(translated === key ? t("login.err.unexpected", { code: err.code }) : translated);
       } else {
-        setError("No pudimos conectar con el servidor. Reintenta en unos segundos.");
+        setError(t("login.err.network"));
       }
     } finally {
       setSubmitting(false);
@@ -42,26 +47,41 @@ export default function LoginPage() {
           </div>
         </div>
         <h1>
-          Cada negocio merece <span className="accent">su propio timbre.</span>
+          {t("login.tagline.before")} <span className="accent">{t("login.tagline.after")}</span>
         </h1>
-        <p className="subtle">
-          Agentes de voz IA que llaman, agendan y responden con el tono de cada marca.
-          Configúralos, mide cada llamada, transfiere a humano cuando toque.
-        </p>
+        <p className="subtle">{t("login.description")}</p>
         <ul className="login-feature-list">
-          <li>Multi-tenant aislado, audit log y DNC desde el día uno.</li>
-          <li>Voz en tiempo real: OpenAI Realtime, Deepgram, AssemblyAI.</li>
-          <li>Asterisk + cualquier trunk SIP (Twilio, Vonage, Telnyx).</li>
+          <li>{t("login.feature.1")}</li>
+          <li>{t("login.feature.2")}</li>
+          <li>{t("login.feature.3")}</li>
         </ul>
       </div>
       <div className="login-form-wrap">
         <form className="login-form" onSubmit={handleSubmit}>
-          <p className="eyebrow">Acceso</p>
-          <h2>Entrar al portal</h2>
-          <p className="subtle">Usa tu cuenta de operador o platform admin.</p>
+          <div className="login-lang-row">
+            <button
+              type="button"
+              className={`lang-switch-btn${lang === "es" ? " active" : ""}`}
+              onClick={() => setLang("es")}
+              aria-pressed={lang === "es"}
+            >
+              ES
+            </button>
+            <button
+              type="button"
+              className={`lang-switch-btn${lang === "en" ? " active" : ""}`}
+              onClick={() => setLang("en")}
+              aria-pressed={lang === "en"}
+            >
+              EN
+            </button>
+          </div>
+          <p className="eyebrow">{t("login.eyebrow")}</p>
+          <h2>{t("login.title")}</h2>
+          <p className="subtle">{t("login.subtitle")}</p>
 
           <div className="field">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">{t("login.email")}</label>
             <input
               id="email"
               type="email"
@@ -74,7 +94,7 @@ export default function LoginPage() {
             />
           </div>
           <div className="field">
-            <label htmlFor="password">Contraseña</label>
+            <label htmlFor="password">{t("login.password")}</label>
             <input
               id="password"
               type="password"
@@ -93,28 +113,12 @@ export default function LoginPage() {
           ) : null}
 
           <button className="button" disabled={submitting}>
-            {submitting ? "Entrando…" : "Entrar"}
+            {submitting ? t("login.button.loading") : t("login.button")}
           </button>
 
-          <p className="login-hint subtle">
-            ¿Has olvidado tu contraseña? Habla con el administrador de tu cuenta para que te
-            restablezca el acceso.
-          </p>
+          <p className="login-hint subtle">{t("login.forgot")}</p>
         </form>
       </div>
     </div>
   );
-}
-
-function translateError(code: string): string {
-  switch (code) {
-    case "invalid_credentials":
-      return "Email o contraseña incorrectos.";
-    case "email_and_password_required":
-      return "Introduce email y contraseña.";
-    case "tenant_required":
-      return "Tu cuenta no tiene tenant asignado. Contacta con el administrador.";
-    default:
-      return `Error inesperado (${code}). Reintenta o contacta con soporte.`;
-  }
 }

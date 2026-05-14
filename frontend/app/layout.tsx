@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Inter_Tight } from "next/font/google";
 import { AuthProvider } from "../lib/auth-context";
+import { LangProvider } from "../lib/i18n";
 import { Chrome } from "../components/chrome";
 import { ToastProvider } from "../components/toast";
 
@@ -22,11 +23,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" className={interTight.variable}>
       <body>
-        <AuthProvider>
-          <ToastProvider>
-            <Chrome>{children}</Chrome>
-          </ToastProvider>
-        </AuthProvider>
+        <LangProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <Chrome>{children}</Chrome>
+            </ToastProvider>
+          </AuthProvider>
+        </LangProvider>
       </body>
     </html>
   );

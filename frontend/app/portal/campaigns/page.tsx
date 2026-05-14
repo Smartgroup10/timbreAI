@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { Pause, Play, Trash2, Users } from "lucide-react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, Bot, Call, Campaign, CampaignLead, Lead, statusClass, statusLabel } from "../../../lib/api";
+import { api, ApiError, Bot, Call, Campaign, CampaignLead, Lead, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+import { useT, useStatusLabel } from "../../../lib/i18n";
 
 // Convierte un timestamp ISO del backend a lo que espera <input type="datetime-local">
 // (formato "YYYY-MM-DDTHH:mm" en zona local). Devuelve "" si la fecha es null.
@@ -28,6 +29,8 @@ function fromLocalInput(v: string): string | null {
 
 export default function CampaignsPage() {
   const tenant = useTenantScope();
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const campaigns = useResource(() => api.campaigns(tenant), [tenant]);
   const bots = useResource(() => api.bots(tenant), [tenant]);
   const [formOpen, setFormOpen] = useState(false);
@@ -37,43 +40,43 @@ export default function CampaignsPage() {
   async function handleCreate(input: Partial<Campaign>) {
     try {
       await api.createCampaign(input, tenant);
-      toast.push("Campaña creada", "success");
+      toast.push(t("campaigns.toast.created"), "success");
       setFormOpen(false);
       campaigns.reload();
     } catch (err) {
       const code = err instanceof ApiError ? err.code : "error";
-      toast.push(`No se pudo crear: ${code}`, "danger");
+      toast.push(t("campaigns.toast.create_failed", { err: code }), "danger");
     }
   }
 
   async function handleLaunch(c: Campaign) {
     try {
       await api.updateCampaign(c.id, { status: "active" }, tenant);
-      toast.push("Campaña lanzada — el worker empezará a marcar en <30s", "success");
+      toast.push(t("campaigns.toast.launched"), "success");
       campaigns.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("campaigns.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handlePause(c: Campaign) {
     try {
       await api.updateCampaign(c.id, { status: "paused" }, tenant);
-      toast.push("Campaña pausada", "success");
+      toast.push(t("campaigns.toast.paused"), "success");
       campaigns.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("campaigns.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handleDelete(c: Campaign) {
-    if (!confirm(`Eliminar la campaña "${c.name}"?`)) return;
+    if (!confirm(t("campaigns.toast.delete_confirm", { name: c.name }))) return;
     try {
       await api.deleteCampaign(c.id, tenant);
-      toast.push("Campaña eliminada", "success");
+      toast.push(t("campaigns.toast.deleted"), "success");
       campaigns.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("campaigns.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
@@ -81,16 +84,13 @@ export default function CampaignsPage() {
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Portal cliente</p>
-          <h1>Campañas</h1>
-          <p className="subtle">
-            Programa cuándo se lanza cada campaña, cuántas llamadas en paralelo y respeta los horarios
-            permitidos del tenant.
-          </p>
+          <p className="eyebrow">{t("portal.eyebrow")}</p>
+          <h1>{t("campaigns.title")}</h1>
+          <p className="subtle">{t("campaigns.subtitle.full")}</p>
         </div>
         <div className="actions">
           <button className="button secondary" onClick={() => setFormOpen((v) => !v)}>
-            {formOpen ? "Cancelar" : "Nueva campaña"}
+            {formOpen ? t("campaigns.btn.cancel") : t("campaigns.new")}
           </button>
         </div>
       </div>
@@ -102,56 +102,60 @@ export default function CampaignsPage() {
           <section className="panel" key={campaign.id}>
             <div className="panel-header">
               <div>
-                <p className="eyebrow">Campaña</p>
+                <p className="eyebrow">{t("campaigns.drawer.eyebrow")}</p>
                 <h2>{campaign.name}</h2>
               </div>
               <span className={statusClass(campaign.status)}>{statusLabel(campaign.status)}</span>
             </div>
             <div className="command-strip">
               <div className="command-row">
-                <span>Inicio</span>
-                <strong>{campaign.startAt ? new Date(campaign.startAt).toLocaleString() : "Inmediato"}</strong>
+                <span>{t("campaigns.start")}</span>
+                <strong>
+                  {campaign.startAt ? new Date(campaign.startAt).toLocaleString() : t("campaigns.start.immediate")}
+                </strong>
               </div>
               <div className="command-row">
-                <span>Fin</span>
-                <strong>{campaign.endAt ? new Date(campaign.endAt).toLocaleString() : "Sin límite"}</strong>
+                <span>{t("campaigns.end")}</span>
+                <strong>
+                  {campaign.endAt ? new Date(campaign.endAt).toLocaleString() : t("campaigns.end.unlimited")}
+                </strong>
               </div>
               <div className="command-row">
-                <span>Bot</span>
+                <span>{t("col.bot")}</span>
                 <strong>{(bots.data ?? []).find((b) => b.id === campaign.botId)?.name || campaign.botId || "—"}</strong>
               </div>
               <div className="command-row">
-                <span>Leads</span>
+                <span>{t("col.leads")}</span>
                 <strong>{campaign.leadCount}</strong>
               </div>
               <div className="command-row">
-                <span>Concurrencia</span>
-                <strong>{campaign.maxConcurrent} en paralelo</strong>
+                <span>{t("col.concurrency")}</span>
+                <strong>{t("campaigns.parallel", { n: campaign.maxConcurrent })}</strong>
               </div>
               <div className="command-row">
-                <span>Reintentos</span>
+                <span>{t("col.retries")}</span>
                 <strong>{campaign.maxAttempts}</strong>
               </div>
             </div>
             <div className="actions" style={{ marginTop: 14, justifyContent: "flex-start" }}>
               <button className="button compact" onClick={() => setLeadsDrawer(campaign)}>
                 <Users aria-hidden="true" />
-                <span>Gestionar leads</span>
+                <span>{t("campaigns.btn.manageleads")}</span>
               </button>
               {campaign.status === "active" ? (
                 <button className="button secondary compact" onClick={() => handlePause(campaign)}>
                   <Pause aria-hidden="true" />
-                  <span>Pausar</span>
+                  <span>{t("campaigns.btn.pause")}</span>
                 </button>
               ) : (
                 <button className="button secondary compact" onClick={() => handleLaunch(campaign)}>
                   <Play aria-hidden="true" />
-                  <span>Lanzar</span>
+                  <span>{t("campaigns.btn.launch")}</span>
                 </button>
               )}
               <button className="button ghost compact" onClick={() => handleDelete(campaign)}>
                 <Trash2 aria-hidden="true" />
-                <span>Eliminar</span>
+                <span>{t("campaigns.btn.delete")}</span>
               </button>
             </div>
           </section>
@@ -170,27 +174,22 @@ export default function CampaignsPage() {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Control de lanzamiento</p>
-            <h2>El worker hace esto antes de cada llamada</h2>
+            <p className="eyebrow">{t("campaigns.control.eyebrow")}</p>
+            <h2>{t("campaigns.control.title")}</h2>
           </div>
         </div>
         <div className="grid three">
           <div>
-            <h3>Consentimiento</h3>
-            <p className="subtle">Cruza cada lead con la tabla DNC del tenant. Si está bloqueado, lo salta.</p>
+            <h3>{t("campaigns.control.consent.title")}</h3>
+            <p className="subtle">{t("campaigns.control.consent.desc")}</p>
           </div>
           <div>
-            <h3>Horario</h3>
-            <p className="subtle">
-              Solo marca dentro de allowed_hours y allowed_days configurados en /portal/settings, en la
-              zona horaria del tenant.
-            </p>
+            <h3>{t("campaigns.control.schedule.title")}</h3>
+            <p className="subtle">{t("campaigns.control.schedule.desc")}</p>
           </div>
           <div>
-            <h3>Volumen</h3>
-            <p className="subtle">
-              Respeta el daily cap del tenant y el max_concurrent de cada campaña (semáforo por campaña).
-            </p>
+            <h3>{t("campaigns.control.volume.title")}</h3>
+            <p className="subtle">{t("campaigns.control.volume.desc")}</p>
           </div>
         </div>
       </section>
@@ -199,6 +198,7 @@ export default function CampaignsPage() {
 }
 
 function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Partial<Campaign>) => Promise<void> }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [botId, setBotId] = useState(bots[0]?.id ?? "");
   const [startAt, setStartAt] = useState("");
@@ -223,7 +223,6 @@ function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Parti
           maxConcurrent,
           startAt: fromLocalInput(startAt),
           endAt: fromLocalInput(endAt),
-          // Mantengo schedule como label cosmético (se sigue mostrando si no usas pickers).
           schedule: startAt ? `${startAt} → ${endAt || "∞"}` : "",
         });
         setSubmitting(false);
@@ -231,19 +230,19 @@ function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Parti
     >
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Nueva campaña</p>
-          <h2>Programar</h2>
+          <p className="eyebrow">{t("campaigns.form.eyebrow")}</p>
+          <h2>{t("campaigns.form.title")}</h2>
         </div>
       </div>
       <div className="form-grid">
         <div className="field">
-          <label>Nombre</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Outbound enero leads frios" />
+          <label>{t("campaigns.field.name")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder={t("campaigns.form.name.placeholder")} />
         </div>
         <div className="field">
-          <label>Bot</label>
+          <label>{t("col.bot")}</label>
           <select value={botId} onChange={(e) => setBotId(e.target.value)} required>
-            <option value="">—</option>
+            <option value="">{t("campaigns.form.bot.placeholder")}</option>
             {bots.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -252,21 +251,17 @@ function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Parti
           </select>
         </div>
         <div className="field">
-          <label>Empieza a marcar (opcional)</label>
+          <label>{t("campaigns.form.startat")}</label>
           <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
-          <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
-            Vacío = empieza al pulsar "Lanzar". El worker respeta también el horario del tenant.
-          </p>
+          <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>{t("campaigns.form.startat.hint")}</p>
         </div>
         <div className="field">
-          <label>Termina (opcional)</label>
+          <label>{t("campaigns.form.endat")}</label>
           <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
-          <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
-            Vacío = corre hasta agotar leads.
-          </p>
+          <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>{t("campaigns.form.endat.hint")}</p>
         </div>
         <div className="field">
-          <label>Llamadas en paralelo</label>
+          <label>{t("campaigns.form.concurrency")}</label>
           <input
             type="number"
             min={1}
@@ -274,12 +269,10 @@ function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Parti
             value={maxConcurrent}
             onChange={(e) => setMaxConcurrent(parseInt(e.target.value, 10) || 1)}
           />
-          <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
-            Limitado además por puertos RTP de Asterisk y plan del proveedor SIP.
-          </p>
+          <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>{t("campaigns.form.concurrency.hint")}</p>
         </div>
         <div className="field">
-          <label>Intentos máximos por lead</label>
+          <label>{t("campaigns.form.attempts")}</label>
           <input
             type="number"
             min={1}
@@ -289,16 +282,16 @@ function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Parti
           />
         </div>
         <div className="field">
-          <label>Estado inicial</label>
+          <label>{t("campaigns.form.status")}</label>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="draft">Borrador (no marca todavía)</option>
-            <option value="active">Activa (empieza al guardar)</option>
+            <option value="draft">{t("campaigns.form.status.draft")}</option>
+            <option value="active">{t("campaigns.form.status.active")}</option>
           </select>
         </div>
       </div>
       <div className="actions" style={{ marginTop: 12 }}>
         <button className="button" disabled={submitting}>
-          {submitting ? "Guardando…" : "Crear campaña"}
+          {submitting ? t("campaigns.form.submitting") : t("campaigns.form.submit")}
         </button>
       </div>
     </form>
@@ -318,6 +311,8 @@ function CampaignLeadsDrawer({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const [tab, setTab] = useState<DrawerTab>("leads");
   const [leads, setLeads] = useState<CampaignLead[]>([]);
   const [available, setAvailable] = useState<Lead[]>([]);
@@ -340,7 +335,7 @@ function CampaignLeadsDrawer({
       setAvailable(allLeads.filter((l) => !inCampaign.has(l.id)));
       setCalls(allCalls.filter((c) => c.campaignId === campaign.id));
     } catch (err) {
-      toast.push(`Error cargando datos: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("campaigns.drawer.toast.loaderror", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     } finally {
       setLoading(false);
     }
@@ -366,13 +361,13 @@ function CampaignLeadsDrawer({
     setAdding(true);
     try {
       const r = await api.addCampaignLeads(campaign.id, Array.from(selected), tenant);
-      toast.push(`${r.created} leads añadidos`, "success");
+      toast.push(t("campaigns.drawer.toast.added", { n: r.created }), "success");
       setSelected(new Set());
       await reload();
       onChanged();
       setTab("leads");
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("campaigns.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     } finally {
       setAdding(false);
     }
@@ -381,28 +376,28 @@ function CampaignLeadsDrawer({
   async function handleRemove(leadId: string) {
     try {
       await api.removeCampaignLead(campaign.id, leadId, tenant);
-      toast.push("Lead retirado", "success");
+      toast.push(t("campaigns.drawer.toast.removed"), "success");
       await reload();
       onChanged();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("campaigns.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   return (
     <div className="drawer-overlay" role="dialog" aria-modal="true">
-      <button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar" />
+      <button className="drawer-backdrop" onClick={onClose} aria-label={t("btn.close")} />
       <aside className="drawer wide">
         <header className="drawer-header">
           <div>
-            <p className="eyebrow">Campaña</p>
+            <p className="eyebrow">{t("campaigns.drawer.eyebrow")}</p>
             <h2>{campaign.name}</h2>
             <p className="subtle" style={{ marginTop: 4 }}>
-              {leads.length} leads · {calls.length} llamadas · {campaign.maxConcurrent} en paralelo
+              {t("campaigns.drawer.summary", { leads: leads.length, calls: calls.length, n: campaign.maxConcurrent })}
             </p>
           </div>
           <button className="button secondary compact" onClick={onClose}>
-            Cerrar
+            {t("btn.close")}
           </button>
         </header>
 
@@ -411,37 +406,37 @@ function CampaignLeadsDrawer({
             className={`chip-button${tab === "leads" ? " active" : ""}`}
             onClick={() => setTab("leads")}
           >
-            Leads ({leads.length})
+            {t("campaigns.drawer.tab.leads.count", { n: leads.length })}
           </button>
           <button
             className={`chip-button${tab === "calls" ? " active" : ""}`}
             onClick={() => setTab("calls")}
           >
-            Llamadas ({calls.length})
+            {t("campaigns.drawer.tab.calls.count", { n: calls.length })}
           </button>
           <button
             className={`chip-button${tab === "add" ? " active" : ""}`}
             onClick={() => setTab("add")}
           >
-            Añadir ({available.length} disponibles)
+            {t("campaigns.drawer.tab.add.count", { n: available.length })}
           </button>
         </div>
 
         <div className="drawer-body">
           {tab === "leads" ? (
             loading ? (
-              <p className="subtle">Cargando…</p>
+              <p className="subtle">{t("g.loading")}</p>
             ) : leads.length === 0 ? (
-              <p className="subtle">Aún no hay leads en esta campaña.</p>
+              <p className="subtle">{t("campaigns.drawer.empty.leads")}</p>
             ) : (
               <table>
                 <thead>
                   <tr>
-                    <th>Nombre</th>
-                    <th>Teléfono</th>
-                    <th>Estado</th>
-                    <th>Intentos</th>
-                    <th>Último intento</th>
+                    <th>{t("col.name")}</th>
+                    <th>{t("col.phone")}</th>
+                    <th>{t("col.status")}</th>
+                    <th>{t("col.attempts")}</th>
+                    <th>{t("col.lastattempt")}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -461,7 +456,7 @@ function CampaignLeadsDrawer({
                       </td>
                       <td>
                         <button className="button ghost compact" onClick={() => handleRemove(cl.leadId)}>
-                          Retirar
+                          {t("campaigns.drawer.remove")}
                         </button>
                       </td>
                     </tr>
@@ -471,26 +466,21 @@ function CampaignLeadsDrawer({
             )
           ) : tab === "calls" ? (
             loading ? (
-              <p className="subtle">Cargando…</p>
+              <p className="subtle">{t("g.loading")}</p>
             ) : calls.length === 0 ? (
-              <p className="subtle">
-                El bot aún no ha realizado ninguna llamada en esta campaña. Si está en estado{" "}
-                <code className="mono">active</code>, el worker la marcará al próximo tick (cada 30s).
-              </p>
+              <p className="subtle">{t("campaigns.drawer.empty.calls")}</p>
             ) : (
               <>
-                <p className="subtle" style={{ marginBottom: 12 }}>
-                  Historial de las llamadas que el bot ha lanzado para esta campaña. Refresca cada 10s.
-                </p>
+                <p className="subtle" style={{ marginBottom: 12 }}>{t("campaigns.drawer.calls.hint")}</p>
                 <table>
                   <thead>
                     <tr>
-                      <th>Lead</th>
-                      <th>Teléfono</th>
-                      <th>Status</th>
-                      <th>Outcome</th>
-                      <th>Duración</th>
-                      <th>Inicio</th>
+                      <th>{t("col.lead")}</th>
+                      <th>{t("col.phone")}</th>
+                      <th>{t("col.status")}</th>
+                      <th>{t("col.outcome")}</th>
+                      <th>{t("col.duration")}</th>
+                      <th>{t("col.start")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -508,7 +498,7 @@ function CampaignLeadsDrawer({
                         </td>
                         <td>{c.durationSec > 0 ? `${c.durationSec}s` : "—"}</td>
                         <td className="subtle">
-                          {c.startedAt ? new Date(c.startedAt).toLocaleString() : "queued"}
+                          {c.startedAt ? new Date(c.startedAt).toLocaleString() : statusLabel("queued")}
                         </td>
                       </tr>
                     ))}
@@ -517,11 +507,10 @@ function CampaignLeadsDrawer({
               </>
             )
           ) : (
-            // tab === "add"
             available.length === 0 ? (
               <p className="subtle">
-                No hay más leads en este tenant para añadir. Crea leads desde{" "}
-                <a href="/portal/leads">Leads</a>.
+                {t("campaigns.drawer.empty.add")} {t("campaigns.drawer.empty.add.cta")}{" "}
+                <a href="/portal/leads">{t("nav.leads")}</a>.
               </p>
             ) : (
               <>
@@ -530,10 +519,10 @@ function CampaignLeadsDrawer({
                     <thead>
                       <tr>
                         <th style={{ width: 40 }}></th>
-                        <th>Nombre</th>
-                        <th>Teléfono</th>
-                        <th>Tipo</th>
-                        <th>Estado</th>
+                        <th>{t("col.name")}</th>
+                        <th>{t("col.phone")}</th>
+                        <th>{t("col.type")}</th>
+                        <th>{t("col.status")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -566,7 +555,7 @@ function CampaignLeadsDrawer({
                 </div>
                 <div className="actions" style={{ marginTop: 12 }}>
                   <button className="button" disabled={adding || selected.size === 0} onClick={handleAdd}>
-                    Añadir {selected.size > 0 ? `(${selected.size})` : ""}
+                    {t("campaigns.drawer.add.button")} {selected.size > 0 ? `(${selected.size})` : ""}
                   </button>
                 </div>
               </>

@@ -1,26 +1,7 @@
 "use client";
 
 import { AuditLogEntry } from "../lib/api";
-
-const actionLabels: Record<string, string> = {
-  "auth.login": "Login",
-  "bot.create": "Bot creado",
-  "bot.update": "Bot actualizado",
-  "bot.delete": "Bot eliminado",
-  "bot.assign_did": "DID asignado al bot",
-  "campaign.update": "Campaña actualizada",
-  "campaign.delete": "Campaña eliminada",
-  "call.test_originate": "Llamada de prueba",
-  "did.assign_tenant": "DID asignado a tenant",
-  "dnc.add": "Número bloqueado (DNC)",
-  "dnc.remove": "Número liberado",
-  "lead.update": "Lead actualizado",
-  "lead.delete": "Lead eliminado",
-  "property.create": "Propiedad creada",
-  "property.update": "Propiedad actualizada",
-  "property.delete": "Propiedad eliminada",
-  "user.password_change": "Cambio de contraseña",
-};
+import { useT } from "../lib/i18n";
 
 export function AuditTable({ rows, loading, error, showTenant = false }: {
   rows: AuditLogEntry[];
@@ -28,21 +9,29 @@ export function AuditTable({ rows, loading, error, showTenant = false }: {
   error: string | null;
   showTenant?: boolean;
 }) {
-  if (loading) return <div className="empty-state">Cargando…</div>;
-  if (error) return <div className="empty-state danger">Error: {error}</div>;
-  if (rows.length === 0) return <div className="empty-state">Sin eventos registrados.</div>;
+  const t = useT();
+
+  function actionLabel(action: string): string {
+    const key = `audit.action.${action}`;
+    const translated = t(key);
+    return translated === key ? action : translated;
+  }
+
+  if (loading) return <div className="empty-state">{t("audit.table.loading")}</div>;
+  if (error) return <div className="empty-state danger">{t("g.error")}: {error}</div>;
+  if (rows.length === 0) return <div className="empty-state">{t("audit.table.empty")}</div>;
 
   return (
     <div className="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Cuándo</th>
-            <th>Acción</th>
-            {showTenant ? <th>Tenant</th> : null}
-            <th>Actor</th>
-            <th>Entidad</th>
-            <th>Detalles</th>
+            <th>{t("audit.col.when")}</th>
+            <th>{t("audit.col.action")}</th>
+            {showTenant ? <th>{t("audit.col.tenant")}</th> : null}
+            <th>{t("audit.col.actor")}</th>
+            <th>{t("audit.col.entity")}</th>
+            <th>{t("audit.col.details")}</th>
           </tr>
         </thead>
         <tbody>
@@ -50,7 +39,7 @@ export function AuditTable({ rows, loading, error, showTenant = false }: {
             <tr key={row.id}>
               <td><time>{new Date(row.createdAt).toLocaleString()}</time></td>
               <td>
-                <span className="chip">{actionLabels[row.action] || row.action}</span>
+                <span className="chip">{actionLabel(row.action)}</span>
               </td>
               {showTenant ? (
                 <td>

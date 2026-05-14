@@ -6,23 +6,25 @@ import { useToast } from "../../../components/toast";
 import { api, ApiError, Property } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+import { useT } from "../../../lib/i18n";
 
 type EditState = { property: Property | null; mode: "edit" | "create" } | null;
 
 export default function PropertiesPage() {
   const tenant = useTenantScope();
+  const t = useT();
   const properties = useResource(() => api.properties(tenant), [tenant]);
   const toast = useToast();
   const [editor, setEditor] = useState<EditState>(null);
 
   async function handleDelete(property: Property) {
-    if (!confirm(`Eliminar la propiedad "${property.name}"?`)) return;
+    if (!confirm(t("properties.toast.delete_confirm", { name: property.name }))) return;
     try {
       await api.deleteProperty(property.id, tenant);
-      toast.push("Propiedad eliminada", "success");
+      toast.push(t("properties.toast.deleted"), "success");
       properties.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("properties.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
@@ -30,20 +32,20 @@ export default function PropertiesPage() {
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Portal cliente</p>
-          <h1>Propiedades</h1>
-          <p className="subtle">Conocimiento verificado que el bot puede usar en llamada sin inventar condiciones.</p>
+          <p className="eyebrow">{t("portal.eyebrow")}</p>
+          <h1>{t("properties.title")}</h1>
+          <p className="subtle">{t("properties.subtitle.full")}</p>
         </div>
         <div className="actions">
           <button className="button" onClick={() => setEditor({ property: null, mode: "create" })}>
             <Plus aria-hidden="true" />
-            <span>Nueva propiedad</span>
+            <span>{t("properties.btn.new")}</span>
           </button>
         </div>
       </div>
 
-      {properties.loading ? <div className="empty-state">Cargando…</div> : null}
-      {properties.error ? <div className="empty-state danger">Error: {properties.error}</div> : null}
+      {properties.loading ? <div className="empty-state">{t("g.loading")}</div> : null}
+      {properties.error ? <div className="empty-state danger">{t("g.error")}: {properties.error}</div> : null}
 
       <div className="grid two">
         {(properties.data ?? []).map((property) => (
@@ -60,11 +62,11 @@ export default function PropertiesPage() {
             </p>
             <div className="command-strip">
               <div>
-                <h3>Requisitos</h3>
+                <h3>{t("properties.requirements")}</h3>
                 <p className="subtle">{property.requirements.join(", ") || "—"}</p>
               </div>
               <div>
-                <h3>FAQs</h3>
+                <h3>{t("properties.faqs")}</h3>
                 <p className="subtle">{property.faqs.join(", ") || "—"}</p>
               </div>
             </div>
@@ -74,11 +76,11 @@ export default function PropertiesPage() {
                 onClick={() => setEditor({ property, mode: "edit" })}
               >
                 <Pencil aria-hidden="true" />
-                <span>Editar</span>
+                <span>{t("properties.btn.edit")}</span>
               </button>
               <button className="button ghost compact" onClick={() => handleDelete(property)}>
                 <Trash2 aria-hidden="true" />
-                <span>Eliminar</span>
+                <span>{t("properties.btn.delete")}</span>
               </button>
             </div>
           </section>
@@ -112,6 +114,7 @@ function PropertyEditor({
   onSaved: () => void;
 }) {
   const tenant = useTenantScope();
+  const t = useT();
   const toast = useToast();
   const [name, setName] = useState(property?.name ?? "");
   const [address, setAddress] = useState(property?.address ?? "");
@@ -124,7 +127,7 @@ function PropertyEditor({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim() || !address.trim()) {
-      toast.push("Nombre y dirección requeridos", "warn");
+      toast.push(t("properties.toast.warn.required"), "warn");
       return;
     }
     setSubmitting(true);
@@ -142,10 +145,10 @@ function PropertyEditor({
       } else if (property) {
         await api.updateProperty(property.id, payload, tenant);
       }
-      toast.push(mode === "create" ? "Propiedad creada" : "Propiedad actualizada", "success");
+      toast.push(mode === "create" ? t("properties.toast.created") : t("properties.toast.updated"), "success");
       onSaved();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("properties.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     } finally {
       setSubmitting(false);
     }
@@ -153,55 +156,67 @@ function PropertyEditor({
 
   return (
     <div className="drawer-overlay" role="dialog" aria-modal="true">
-      <button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar" />
+      <button className="drawer-backdrop" onClick={onClose} aria-label={t("btn.close")} />
       <aside className="drawer">
         <header className="drawer-header">
           <div>
-            <p className="eyebrow">{mode === "create" ? "Nueva propiedad" : "Editar propiedad"}</p>
-            <h2>{mode === "create" ? "Añadir" : property?.name}</h2>
+            <p className="eyebrow">{mode === "create" ? t("properties.editor.create.eyebrow") : t("properties.editor.edit.eyebrow")}</p>
+            <h2>{mode === "create" ? t("properties.editor.create.title") : property?.name}</h2>
           </div>
           <button className="button secondary compact" onClick={onClose}>
-            Cerrar
+            {t("btn.close")}
           </button>
         </header>
 
         <form className="drawer-body" onSubmit={handleSubmit}>
           <div className="field">
-            <label>Nombre</label>
+            <label>{t("properties.editor.field.name")}</label>
             <input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="field">
-            <label>Dirección</label>
+            <label>{t("properties.editor.field.address")}</label>
             <input value={address} onChange={(e) => setAddress(e.target.value)} required />
           </div>
           <div className="form-grid">
             <div className="field">
-              <label>Precio</label>
-              <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="€1,200/mes" />
+              <label>{t("properties.editor.field.price")}</label>
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder={t("properties.editor.field.price.placeholder")}
+              />
             </div>
             <div className="field">
-              <label>Disponibilidad</label>
-              <input value={availability} onChange={(e) => setAvailability(e.target.value)} placeholder="Inmediata" />
+              <label>{t("properties.editor.field.availability")}</label>
+              <input
+                value={availability}
+                onChange={(e) => setAvailability(e.target.value)}
+                placeholder={t("properties.editor.field.availability.placeholder")}
+              />
             </div>
           </div>
           <div className="field">
-            <label>Requisitos (uno por línea)</label>
+            <label>{t("properties.editor.field.requirements")}</label>
             <textarea
               value={requirements}
               onChange={(e) => setRequirements(e.target.value)}
-              placeholder={"Verificación de ingresos\nNo desahucios"}
+              placeholder={t("properties.editor.field.requirements.placeholder")}
             />
           </div>
           <div className="field">
-            <label>FAQs (una por línea)</label>
+            <label>{t("properties.editor.field.faqs")}</label>
             <textarea
               value={faqs}
               onChange={(e) => setFaqs(e.target.value)}
-              placeholder={"Mascotas con depósito\nGastos comunes incluidos"}
+              placeholder={t("properties.editor.field.faqs.placeholder")}
             />
           </div>
           <button className="button" disabled={submitting}>
-            {submitting ? "Guardando…" : mode === "create" ? "Crear propiedad" : "Guardar cambios"}
+            {submitting
+              ? t("properties.editor.submit.creating")
+              : mode === "create"
+              ? t("properties.editor.submit.create")
+              : t("properties.editor.submit.save")}
           </button>
         </form>
       </aside>

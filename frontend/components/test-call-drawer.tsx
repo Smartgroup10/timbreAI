@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, Bot, TestCallResponse } from "../lib/api";
 import { useTenantScope } from "../lib/auth-context";
+import { useT } from "../lib/i18n";
 import { useToast } from "./toast";
 
 type Props = {
@@ -23,6 +24,7 @@ export function TestCallDrawer({
   onCallCreated,
 }: Props) {
   const tenant = useTenantScope();
+  const t = useT();
   const [phone, setPhone] = useState(defaultPhone);
   const [leadName, setLeadName] = useState(defaultLeadName);
   const [botId, setBotId] = useState(defaultBotId);
@@ -45,7 +47,7 @@ export function TestCallDrawer({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!phone.trim()) {
-      toast.push("Número de teléfono requerido", "warn");
+      toast.push(t("drawer.testcall.toast.phonerequired"), "warn");
       return;
     }
     setSubmitting(true);
@@ -57,10 +59,15 @@ export function TestCallDrawer({
       });
       setResponse(res);
       onCallCreated?.(res);
-      toast.push(res.channel ? `Canal ${res.channel.id} originado` : "Llamada registrada", "success");
+      toast.push(
+        res.channel
+          ? t("drawer.testcall.toast.created.channel", { id: res.channel.id })
+          : t("drawer.testcall.toast.created.nochannel"),
+        "success"
+      );
     } catch (err) {
-      const message = err instanceof ApiError ? err.code : "Error desconocido";
-      toast.push(`No se pudo originar la llamada: ${message}`, "danger");
+      const message = err instanceof ApiError ? err.code : "Error";
+      toast.push(t("drawer.testcall.toast.failed", { err: message }), "danger");
     } finally {
       setSubmitting(false);
     }
@@ -72,46 +79,46 @@ export function TestCallDrawer({
 
   return (
     <div className="drawer-overlay" role="dialog" aria-modal="true">
-      <button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar" />
+      <button className="drawer-backdrop" onClick={onClose} aria-label={t("btn.close")} />
       <aside className="drawer">
         <header className="drawer-header">
           <div>
-            <p className="eyebrow">Llamada de prueba</p>
-            <h2>Originar canal via ARI</h2>
+            <p className="eyebrow">{t("drawer.testcall.eyebrow")}</p>
+            <h2>{t("drawer.testcall.title")}</h2>
           </div>
           <button className="button secondary compact" onClick={onClose}>
-            Cerrar
+            {t("btn.close")}
           </button>
         </header>
 
         <form className="drawer-body" onSubmit={handleSubmit}>
           <div className="field">
-            <label htmlFor="phone">Teléfono destino</label>
+            <label htmlFor="phone">{t("drawer.testcall.phone")}</label>
             <input
               id="phone"
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="+34 600 000 000"
+              placeholder={t("drawer.testcall.phone.placeholder")}
               required
             />
           </div>
           <div className="field">
-            <label htmlFor="leadName">Nombre o etiqueta (opcional)</label>
+            <label htmlFor="leadName">{t("drawer.testcall.leadname")}</label>
             <input
               id="leadName"
               type="text"
               value={leadName}
               onChange={(e) => setLeadName(e.target.value)}
-              placeholder="Nombre del contacto"
+              placeholder={t("drawer.testcall.leadname.placeholder")}
             />
           </div>
           <div className="field">
-            <label htmlFor="bot">Bot saliente</label>
+            <label htmlFor="bot">{t("drawer.testcall.bot")}</label>
             <select id="bot" value={botId} onChange={(e) => setBotId(e.target.value)}>
-              <option value="">— Sandbox interno (PJSIP/6001) —</option>
+              <option value="">{t("drawer.testcall.bot.sandbox")}</option>
               {botsWithDID.length > 0 ? (
-                <optgroup label="Bots con DID asignado">
+                <optgroup label={t("drawer.testcall.bot.withdid")}>
                   {botsWithDID.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.name} ({b.didE164})
@@ -120,10 +127,10 @@ export function TestCallDrawer({
                 </optgroup>
               ) : null}
               {botsWithoutDID.length > 0 ? (
-                <optgroup label="Bots sin DID (no podran llamar)">
+                <optgroup label={t("drawer.testcall.bot.nodid")}>
                   {botsWithoutDID.map((b) => (
                     <option key={b.id} value={b.id} disabled>
-                      {b.name} — sin DID
+                      {b.name} — {t("drawer.testcall.bot.nodid.suffix")}
                     </option>
                   ))}
                 </optgroup>
@@ -131,40 +138,41 @@ export function TestCallDrawer({
             </select>
             {selectedBot?.didE164 ? (
               <p className="subtle" style={{ marginTop: 4 }}>
-                Saldra como <code className="mono">{selectedBot.didE164}</code> via trunk asignado.
+                {t("drawer.testcall.bot.willcall")} <code className="mono">{selectedBot.didE164}</code>{" "}
+                {t("drawer.testcall.bot.viatrunk")}
               </p>
             ) : (
               <p className="subtle" style={{ marginTop: 4 }}>
-                Sin bot: se usa la extension de sandbox interna del backend.
+                {t("drawer.testcall.bot.usesandbox")}
               </p>
             )}
           </div>
 
           <button className="button" disabled={submitting}>
-            {submitting ? "Originando…" : "Lanzar llamada"}
+            {submitting ? t("drawer.testcall.submitting") : t("drawer.testcall.submit")}
           </button>
         </form>
 
         {response ? (
           <div className="drawer-result">
-            <p className="eyebrow">Resultado</p>
+            <p className="eyebrow">{t("drawer.testcall.result")}</p>
             <div className="kv">
-              <span>Call ID</span>
+              <span>{t("drawer.testcall.callid")}</span>
               <strong>{response.call.id}</strong>
             </div>
             <div className="kv">
-              <span>Status</span>
+              <span>{t("drawer.testcall.statuslabel")}</span>
               <strong>{response.call.status}</strong>
             </div>
             {response.channel ? (
               <div className="kv">
-                <span>Channel</span>
+                <span>{t("drawer.testcall.channel")}</span>
                 <strong>{response.channel.id}</strong>
               </div>
             ) : null}
             {response.endpoint ? (
               <div className="kv">
-                <span>Endpoint</span>
+                <span>{t("drawer.testcall.endpoint")}</span>
                 <strong>{response.endpoint}</strong>
               </div>
             ) : null}

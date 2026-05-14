@@ -1,16 +1,13 @@
 "use client";
 
-// Error boundary global de Next.js App Router. Next la invoca cuando un
-// componente del árbol lanza durante render — antes el usuario veía un
-// white screen sin contexto.
 import { useEffect } from "react";
 import Link from "next/link";
 import { BrandMark } from "../components/logo";
+import { useT } from "../lib/i18n";
 
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  const t = useT();
   useEffect(() => {
-    // Log al console del navegador — el operador con DevTools abierto verá
-    // el stack y la digest para abrirnos un ticket.
     console.error("timbre.ai · global error boundary:", error);
   }, [error]);
 
@@ -24,28 +21,25 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           </div>
         </div>
         <h1>
-          Algo salió <span className="accent">mal.</span>
+          {t("error.tagline.before")} <span className="accent">{t("error.tagline.after")}</span>
         </h1>
-        <p className="subtle">
-          Tu sesión sigue activa. Reintenta la acción; si vuelve a fallar, contacta con soporte
-          con el código de abajo.
-        </p>
+        <p className="subtle">{t("error.description")}</p>
       </div>
       <div className="login-form-wrap">
         <div className="login-form">
-          <p className="eyebrow">Error inesperado</p>
-          <h2>{error.message || "Fallo al renderizar la página"}</h2>
+          <p className="eyebrow">{t("error.eyebrow")}</p>
+          <h2>{error.message || t("error.fallback")}</h2>
           {error.digest ? (
             <p className="subtle" style={{ marginBottom: 16 }}>
-              Código: <code className="mono">{error.digest}</code>
+              {t("error.code.label")} <code className="mono">{error.digest}</code>
             </p>
           ) : null}
           <div className="actions" style={{ gap: 8 }}>
             <button className="button" onClick={() => reset()}>
-              Reintentar
+              {t("error.retry")}
             </button>
             <Link className="button secondary" href="/portal">
-              Volver al portal
+              {t("error.back")}
             </Link>
           </div>
         </div>

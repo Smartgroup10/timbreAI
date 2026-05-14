@@ -5,15 +5,18 @@ import Link from "next/link";
 import { ArrowLeft, PhoneCall, Trash2 } from "lucide-react";
 import { TestCallDrawer } from "../../../../components/test-call-drawer";
 import { useToast } from "../../../../components/toast";
-import { api, ApiError, statusClass, statusLabel } from "../../../../lib/api";
+import { api, ApiError, statusClass } from "../../../../lib/api";
 import { useTenantScope } from "../../../../lib/auth-context";
 import { useResource } from "../../../../lib/use-resource";
+import { useT, useStatusLabel } from "../../../../lib/i18n";
 
 const STATUS_OPTIONS = ["new", "qualified", "callback", "contacted", "do_not_call"];
 
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const tenant = useTenantScope();
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const lead = useResource(() => api.getLead(id, tenant), [id, tenant]);
   const calls = useResource(() => api.leadCalls(id, tenant), [id, tenant]);
   const toast = useToast();
@@ -22,29 +25,29 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   async function handleStatus(status: string) {
     try {
       await api.updateLead(id, { status }, tenant);
-      toast.push("Estado actualizado", "success");
+      toast.push(t("leads.toast.status_updated"), "success");
       lead.reload();
       calls.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("leads.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handleDelete() {
     if (!lead.data) return;
-    if (!confirm(`Eliminar a "${lead.data.name}"?`)) return;
+    if (!confirm(t("leads.detail.delete.confirm", { name: lead.data.name }))) return;
     try {
       await api.deleteLead(id, tenant);
-      toast.push("Lead eliminado", "success");
+      toast.push(t("leads.toast.deleted"), "success");
       window.location.href = "/portal/leads";
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("leads.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
-  if (lead.loading) return <div className="empty-state">Cargando lead…</div>;
-  if (lead.error) return <div className="empty-state danger">Error: {lead.error}</div>;
-  if (!lead.data) return <div className="empty-state">Lead no encontrado.</div>;
+  if (lead.loading) return <div className="empty-state">{t("leads.detail.loading")}</div>;
+  if (lead.error) return <div className="empty-state danger">{t("g.error")}: {lead.error}</div>;
+  if (!lead.data) return <div className="empty-state">{t("leads.detail.notfound")}</div>;
 
   const l = lead.data;
   const callList = calls.data ?? [];
@@ -64,22 +67,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         <div className="page-title">
           <Link href="/portal/leads" className="button ghost compact" style={{ marginBottom: 8 }}>
             <ArrowLeft aria-hidden="true" />
-            <span>Volver a leads</span>
+            <span>{t("leads.detail.back")}</span>
           </Link>
-          <p className="eyebrow">Lead</p>
+          <p className="eyebrow">{t("leads.detail.eyebrow")}</p>
           <h1>{l.name}</h1>
           <p className="subtle">
-            <code className="mono">{l.phone}</code> · {l.email || "sin email"}
+            <code className="mono">{l.phone}</code> · {l.email || t("leads.detail.noemail")}
           </p>
         </div>
         <div className="actions">
           <button className="button" onClick={() => setDrawerOpen(true)}>
             <PhoneCall aria-hidden="true" />
-            <span>Llamada de prueba</span>
+            <span>{t("leads.detail.testcall")}</span>
           </button>
           <button className="button ghost" onClick={handleDelete}>
             <Trash2 aria-hidden="true" />
-            <span>Eliminar</span>
+            <span>{t("leads.detail.delete")}</span>
           </button>
         </div>
       </div>
@@ -88,19 +91,19 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Datos</p>
-              <h2>Información del lead</h2>
+              <p className="eyebrow">{t("leads.detail.data.eyebrow")}</p>
+              <h2>{t("leads.detail.data.title")}</h2>
             </div>
             <span className={statusClass(l.status)}>{statusLabel(l.status)}</span>
           </div>
           <div className="command-strip">
-            <Row label="Tipo" value={<span className="chip">{l.type}</span>} />
-            <Row label="Fuente" value={l.source} />
-            <Row label="Consentimiento" value={l.consent} />
-            <Row label="Última actividad" value={new Date(l.lastActivity).toLocaleString()} />
+            <Row label={t("leads.detail.type")} value={<span className="chip">{l.type}</span>} />
+            <Row label={t("leads.detail.source")} value={l.source} />
+            <Row label={t("leads.detail.consent")} value={l.consent} />
+            <Row label={t("leads.detail.lastactivity")} value={new Date(l.lastActivity).toLocaleString()} />
           </div>
           <div className="field" style={{ marginTop: 14 }}>
-            <label>Cambiar estado</label>
+            <label>{t("leads.detail.changestatus")}</label>
             <select value={l.status} onChange={(e) => handleStatus(e.target.value)}>
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
@@ -114,29 +117,29 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Resumen</p>
-              <h2>Actividad</h2>
+              <p className="eyebrow">{t("leads.detail.activity.eyebrow")}</p>
+              <h2>{t("leads.detail.activity.title")}</h2>
             </div>
           </div>
           <div className="command-strip">
-            <Row label="Total llamadas" value={<strong>{callList.length}</strong>} />
-            <Row label="Tiempo total" value={formatDuration(totalDuration)} />
+            <Row label={t("leads.detail.totalcalls")} value={<strong>{callList.length}</strong>} />
+            <Row label={t("leads.detail.totaltime")} value={formatDuration(totalDuration)} />
             <Row
-              label="Última llamada"
+              label={t("leads.detail.lastcall")}
               value={
                 callList[0]?.startedAt
                   ? new Date(callList[0].startedAt).toLocaleString()
-                  : <span className="subtle">Nunca</span>
+                  : <span className="subtle">{t("leads.detail.lastcall.never")}</span>
               }
             />
             <Row
-              label="Outcome dominante"
+              label={t("leads.detail.topoutcome")}
               value={
                 callList.length === 0 ? (
                   <span className="subtle">—</span>
                 ) : (
                   <span className="chip">
-                    {topOutcome(callList.map((c) => c.outcome))}
+                    {statusLabel(topOutcome(callList.map((c) => c.outcome)))}
                   </span>
                 )
               }
@@ -148,25 +151,25 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Historial</p>
-            <h2>Llamadas ({callList.length})</h2>
+            <p className="eyebrow">{t("leads.detail.history.eyebrow")}</p>
+            <h2>{t("leads.detail.history.title", { n: callList.length })}</h2>
           </div>
         </div>
         {calls.loading ? (
-          <div className="empty-state">Cargando…</div>
+          <div className="empty-state">{t("g.loading")}</div>
         ) : callList.length === 0 ? (
-          <div className="empty-state">Aún no hay llamadas para este lead.</div>
+          <div className="empty-state">{t("leads.detail.history.empty")}</div>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Fecha</th>
-                  <th>Campaña</th>
-                  <th>Estado</th>
-                  <th>Outcome</th>
-                  <th>Duración</th>
-                  <th>Resumen</th>
+                  <th>{t("leads.detail.col.date")}</th>
+                  <th>{t("col.campaign")}</th>
+                  <th>{t("col.status")}</th>
+                  <th>{t("col.outcome")}</th>
+                  <th>{t("col.duration")}</th>
+                  <th>{t("col.summary")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -177,17 +180,17 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                         {c.startedAt ? new Date(c.startedAt).toLocaleString() : "—"}
                       </Link>
                     </td>
-                    <td>{c.campaign || "Manual"}</td>
+                    <td>{c.campaign || t("leads.detail.manual")}</td>
                     <td>
                       <span className={statusClass(c.status)}>{statusLabel(c.status)}</span>
                     </td>
                     <td>
-                      <span className="chip">{c.outcome}</span>
+                      <span className="chip">{statusLabel(c.outcome)}</span>
                     </td>
                     <td>{formatDuration(c.durationSec)}</td>
                     <td className="summary-cell">
                       <Link href={`/portal/calls/${c.id}`} style={{ color: "inherit" }}>
-                        {c.summary || "Ver detalle"}
+                        {c.summary || t("calls.detail.viewdetail")}
                       </Link>
                     </td>
                   </tr>

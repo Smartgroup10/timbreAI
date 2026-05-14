@@ -3,24 +3,27 @@
 import { use } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { api, statusClass, statusLabel } from "../../../../lib/api";
+import { api, statusClass } from "../../../../lib/api";
 import { useTenantScope } from "../../../../lib/auth-context";
 import { useResource } from "../../../../lib/use-resource";
+import { useT, useStatusLabel } from "../../../../lib/i18n";
 
 export default function CallDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const tenant = useTenantScope();
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const call = useResource(() => api.getCall(id, tenant), [id, tenant]);
   const transcripts = useResource(() => api.callTranscripts(id, tenant), [id, tenant]);
 
   if (call.loading) {
-    return <div className="empty-state">Cargando llamada…</div>;
+    return <div className="empty-state">{t("calls.detail.loading")}</div>;
   }
   if (call.error) {
-    return <div className="empty-state danger">Error: {call.error}</div>;
+    return <div className="empty-state danger">{t("g.error")}: {call.error}</div>;
   }
   if (!call.data) {
-    return <div className="empty-state">Llamada no encontrada.</div>;
+    return <div className="empty-state">{t("calls.detail.notfound")}</div>;
   }
 
   const c = call.data;
@@ -40,9 +43,9 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
         <div className="page-title">
           <Link href="/portal/calls" className="button ghost compact" style={{ marginBottom: 8 }}>
             <ArrowLeft aria-hidden="true" />
-            <span>Volver a llamadas</span>
+            <span>{t("calls.detail.back")}</span>
           </Link>
-          <p className="eyebrow">Llamada</p>
+          <p className="eyebrow">{t("calls.detail.eyebrow")}</p>
           <h1>{c.leadName || c.phone}</h1>
           <p className="subtle">
             <code className="mono">{c.id}</code>
@@ -50,7 +53,7 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="actions">
           <span className={statusClass(c.status)}>{statusLabel(c.status)}</span>
-          <span className="chip">{c.outcome}</span>
+          <span className="chip">{statusLabel(c.outcome)}</span>
         </div>
       </div>
 
@@ -58,21 +61,21 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Detalles</p>
-              <h2>Datos de la llamada</h2>
+              <p className="eyebrow">{t("calls.detail.details.eyebrow")}</p>
+              <h2>{t("calls.detail.details.title")}</h2>
             </div>
           </div>
           <div className="command-strip">
-            <Row label="Teléfono" value={<code className="mono">{c.phone}</code>} />
-            <Row label="Lead" value={c.leadName || "—"} />
-            <Row label="Campaña" value={c.campaign || "—"} />
-            <Row label="Duración" value={formatDuration(c.durationSec)} />
-            <Row label="Inicio" value={c.startedAt ? new Date(c.startedAt).toLocaleString() : "—"} />
-            <Row label="Fin" value={c.endedAt ? new Date(c.endedAt).toLocaleString() : "—"} />
-            <Row label="Canal ARI" value={<code className="mono">{c.channelId || "—"}</code>} />
+            <Row label={t("col.phone")} value={<code className="mono">{c.phone}</code>} />
+            <Row label={t("calls.detail.lead")} value={c.leadName || "—"} />
+            <Row label={t("calls.detail.campaign")} value={c.campaign || "—"} />
+            <Row label={t("calls.detail.duration")} value={formatDuration(c.durationSec)} />
+            <Row label={t("calls.detail.start")} value={c.startedAt ? new Date(c.startedAt).toLocaleString() : "—"} />
+            <Row label={t("calls.detail.end")} value={c.endedAt ? new Date(c.endedAt).toLocaleString() : "—"} />
+            <Row label={t("calls.detail.channel")} value={<code className="mono">{c.channelId || "—"}</code>} />
             <Row
-              label="Voice session"
-              value={c.voiceSessionId ? <code className="mono">{c.voiceSessionId}</code> : <span className="subtle">Sin sesión</span>}
+              label={t("calls.detail.voicesession")}
+              value={c.voiceSessionId ? <code className="mono">{c.voiceSessionId}</code> : <span className="subtle">{t("calls.detail.voicesession.empty")}</span>}
             />
           </div>
         </section>
@@ -80,15 +83,15 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Resumen</p>
-              <h2>Outcome</h2>
+              <p className="eyebrow">{t("calls.detail.summary.eyebrow")}</p>
+              <h2>{t("calls.detail.summary.title")}</h2>
             </div>
           </div>
-          <p className="subtle">{c.summary || "El bot todavía no generó un resumen para esta llamada."}</p>
+          <p className="subtle">{c.summary || t("calls.detail.summary.empty")}</p>
 
           {c.recordingUrl ? (
             <div style={{ marginTop: 14 }}>
-              <p className="eyebrow">Grabación</p>
+              <p className="eyebrow">{t("calls.detail.recording")}</p>
               <audio controls src={c.recordingUrl} style={{ width: "100%" }} />
             </div>
           ) : null}
@@ -98,19 +101,17 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Conversación</p>
-            <h2>Transcript ({lines.length})</h2>
+            <p className="eyebrow">{t("calls.detail.conversation.eyebrow")}</p>
+            <h2>{t("calls.detail.conversation.title", { n: lines.length })}</h2>
           </div>
           <button className="button secondary compact" onClick={() => transcripts.reload()}>
-            Refrescar
+            {t("calls.detail.refresh")}
           </button>
         </div>
         {transcripts.loading ? (
-          <div className="empty-state">Cargando…</div>
+          <div className="empty-state">{t("g.loading")}</div>
         ) : lines.length === 0 ? (
-          <div className="empty-state">
-            Sin transcripts persistidos todavía. El voice-agent los escribe via webhook cuando hay una sesión activa.
-          </div>
+          <div className="empty-state">{t("calls.detail.conversation.empty")}</div>
         ) : (
           <div className="transcript">
             {lines.map((line) => (

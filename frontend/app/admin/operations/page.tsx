@@ -2,21 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { StatCard } from "../../../components/stat-card";
-import { api, statusClass, statusLabel } from "../../../lib/api";
+import { api, statusClass } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+import { useT, useStatusLabel } from "../../../lib/i18n";
 
 type EndpointState = { resource: string; state: string; channel_ids: string[] };
 
 export default function OperationsPage() {
   const { user } = useAuth();
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const overview = useResource(() => api.overview(), []);
   const ops = useResource(() => api.operations(), []);
   const trunks = useResource(() => api.adminTrunks(), []);
   const tenants = useResource(() => api.tenants(), []);
   const audit = useResource(() => api.adminAudit(), []);
 
-  // Estado SIP en vivo de cada trunk vía ARI — actualiza cada 10s.
   const [sipState, setSipState] = useState<Record<string, EndpointState>>({});
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +42,7 @@ export default function OperationsPage() {
   }, []);
 
   if (user && user.role !== "platform_admin") {
-    return <div className="empty-state danger">Acceso restringido al rol platform_admin.</div>;
+    return <div className="empty-state danger">{t("admin.tenants.access.denied")}</div>;
   }
 
   const ariEnabled = Boolean(ops.data?.ariEnabled);
@@ -51,7 +53,6 @@ export default function OperationsPage() {
   const tenantsData = tenants.data ?? [];
   const auditData = (audit.data ?? []).slice(0, 12);
 
-  // Llamadas activas según ARI: sumamos los channel_ids de todos los endpoints.
   const activeChannels = Object.values(sipState).reduce((acc, ep) => acc + (ep.channel_ids?.length ?? 0), 0);
   const registeredTrunks = Object.values(sipState).filter((ep) => ep.state === "online").length;
 
@@ -59,9 +60,9 @@ export default function OperationsPage() {
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Admin interno</p>
-          <h1>Operaciones</h1>
-          <p className="subtle">Salud de servicios, trunks SIP, llamadas activas y actividad global de la plataforma.</p>
+          <p className="eyebrow">{t("admin.eyebrow")}</p>
+          <h1>{t("nav.operations")}</h1>
+          <p className="subtle">{t("admin.ops.subtitle.full")}</p>
         </div>
         <div className="actions">
           <button
@@ -73,36 +74,36 @@ export default function OperationsPage() {
               audit.reload();
             }}
           >
-            Refrescar
+            {t("admin.ops.btn.refresh")}
           </button>
         </div>
       </div>
 
       <div className="grid">
         <StatCard
-          label="Llamadas activas"
+          label={t("admin.ops.stat.activecalls")}
           value={activeChannels}
-          hint="Channels en ARI ahora"
-          trend={activeChannels > 0 ? "Live" : ""}
+          hint={t("admin.ops.stat.activecalls.hint")}
+          trend={activeChannels > 0 ? t("admin.ops.stat.activecalls.trend") : ""}
         />
         <StatCard
-          label="Trunks registrados"
+          label={t("admin.ops.stat.trunks")}
           value={`${registeredTrunks}/${trunksData.length}`}
-          hint="Endpoints SIP online"
-          trend={ariEnabled ? "ARI conectado" : "ARI off"}
+          hint={t("admin.ops.stat.trunks.hint")}
+          trend={ariEnabled ? t("admin.ops.stat.trunks.ari.on") : t("admin.ops.stat.trunks.ari.off")}
         />
         <StatCard
-          label="Tenants"
+          label={t("admin.ops.stat.tenants")}
           value={tenantsData.length}
-          hint="Total en plataforma"
+          hint={t("admin.ops.stat.tenants.hint")}
         />
         <StatCard
-          label="Voice agent"
+          label={t("admin.ops.stat.voiceagent")}
           value={voiceAgentReachable ? "OK" : "Down"}
           hint={
             realProviders.length > 0
-              ? `${realProviders.length} providers reales`
-              : "Solo echo (sin API keys reales)"
+              ? t("admin.ops.stat.voiceagent.providers", { n: realProviders.length })
+              : t("admin.ops.stat.voiceagent.echoonly")
           }
           trend={realProviders.length > 0 ? realProviders.join(", ") : ""}
         />
@@ -112,19 +113,24 @@ export default function OperationsPage() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Salud de servicios</p>
-              <h2>Cluster</h2>
+              <p className="eyebrow">{t("admin.ops.health.eyebrow")}</p>
+              <h2>{t("admin.ops.health.title")}</h2>
             </div>
           </div>
           <div className="command-strip">
-            <Row label="Postgres" ok ok_msg="Conectado (estás leyendo de él)" />
-            <Row label="Asterisk ARI" ok={ariEnabled} ok_msg="WS conectado" ko_msg="Deshabilitado o sin handshake" />
-            <Row label="Voice agent" ok={voiceAgentReachable} ok_msg={`Reachable · providers: ${voiceProviders.join(", ")}`} ko_msg="No responde al ping" />
+            <Row label="Postgres" ok ok_msg={t("admin.ops.health.postgres")} />
+            <Row label="Asterisk ARI" ok={ariEnabled} ok_msg={t("admin.ops.health.ari.ok")} ko_msg={t("admin.ops.health.ari.ko")} />
+            <Row
+              label="Voice agent"
+              ok={voiceAgentReachable}
+              ok_msg={t("admin.ops.health.voiceagent.ok", { list: voiceProviders.join(", ") })}
+              ko_msg={t("admin.ops.health.voiceagent.ko")}
+            />
             <Row
               label="Trunks SIP"
               ok={registeredTrunks > 0}
-              ok_msg={`${registeredTrunks}/${trunksData.length} registrados al proveedor`}
-              ko_msg={trunksData.length === 0 ? "No hay trunks configurados" : "Ninguno registrado — revisa creds"}
+              ok_msg={t("admin.ops.health.trunks.ok", { ok: registeredTrunks, total: trunksData.length })}
+              ko_msg={trunksData.length === 0 ? t("admin.ops.health.trunks.notrunks") : t("admin.ops.health.trunks.none")}
             />
           </div>
         </section>
@@ -132,33 +138,37 @@ export default function OperationsPage() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Trunks</p>
-              <h2>Estado SIP en vivo</h2>
+              <p className="eyebrow">{t("admin.ops.trunks.eyebrow")}</p>
+              <h2>{t("admin.ops.trunks.title")}</h2>
             </div>
-            <a className="button ghost compact" href="/admin/trunks">Gestionar</a>
+            <a className="button ghost compact" href="/admin/trunks">{t("admin.ops.trunks.manage")}</a>
           </div>
           {trunksData.length === 0 ? (
-            <p className="subtle">Aún no hay trunks. Crea uno desde Trunks y DIDs.</p>
+            <p className="subtle">{t("admin.ops.trunks.empty")}</p>
           ) : (
             <table>
               <thead>
                 <tr>
-                  <th>Endpoint</th>
-                  <th>Proveedor</th>
-                  <th>Estado</th>
-                  <th>Channels</th>
+                  <th>{t("admin.ops.trunks.col.endpoint")}</th>
+                  <th>{t("admin.ops.trunks.col.provider")}</th>
+                  <th>{t("admin.ops.trunks.col.state")}</th>
+                  <th>{t("admin.ops.trunks.col.channels")}</th>
                 </tr>
               </thead>
               <tbody>
-                {trunksData.map((t) => {
-                  const sip = sipState[t.asteriskEndpoint];
-                  const stateLabel = sip ? (sip.state === "online" ? "registrado" : sip.state) : "desconocido";
+                {trunksData.map((tr) => {
+                  const sip = sipState[tr.asteriskEndpoint];
+                  const stateLabel = sip
+                    ? sip.state === "online"
+                      ? t("admin.ops.trunks.state.registered")
+                      : sip.state
+                    : t("admin.ops.trunks.state.unknown");
                   return (
-                    <tr key={t.id}>
+                    <tr key={tr.id}>
                       <td>
-                        <code className="mono">{t.asteriskEndpoint}</code>
+                        <code className="mono">{tr.asteriskEndpoint}</code>
                       </td>
-                      <td>{t.provider || "—"}</td>
+                      <td>{tr.provider || "—"}</td>
                       <td>
                         <span className={statusClass(stateLabel)}>{statusLabel(stateLabel)}</span>
                       </td>
@@ -175,22 +185,22 @@ export default function OperationsPage() {
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Auditoría reciente</p>
-            <h2>Últimos cambios</h2>
+            <p className="eyebrow">{t("admin.ops.audit.eyebrow")}</p>
+            <h2>{t("admin.ops.audit.title")}</h2>
           </div>
-          <a className="button ghost compact" href="/admin/audit">Ver todo</a>
+          <a className="button ghost compact" href="/admin/audit">{t("admin.ops.audit.viewall")}</a>
         </div>
         {auditData.length === 0 ? (
-          <p className="subtle">Sin actividad reciente.</p>
+          <p className="subtle">{t("admin.ops.audit.empty")}</p>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>Hora</th>
-                <th>Tenant</th>
-                <th>Actor</th>
-                <th>Acción</th>
-                <th>Entidad</th>
+                <th>{t("admin.ops.audit.col.when")}</th>
+                <th>{t("admin.ops.audit.col.tenant")}</th>
+                <th>{t("admin.ops.audit.col.actor")}</th>
+                <th>{t("admin.ops.audit.col.action")}</th>
+                <th>{t("admin.ops.audit.col.entity")}</th>
               </tr>
             </thead>
             <tbody>
@@ -220,8 +230,8 @@ export default function OperationsPage() {
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Build info</p>
-            <h2>Versión desplegada</h2>
+            <p className="eyebrow">{t("admin.ops.build.eyebrow")}</p>
+            <h2>{t("admin.ops.build.title")}</h2>
           </div>
           <span className="chip">v{(ops.data?.version as string) || "?"}</span>
         </div>
@@ -236,10 +246,11 @@ export default function OperationsPage() {
 }
 
 function Row({ label, ok, ok_msg, ko_msg }: { label: string; ok: boolean; ok_msg?: string; ko_msg?: string }) {
+  const t = useT();
   return (
     <div className="command-row">
       <span>{label}</span>
-      <span className={ok ? "status good" : "status warn"}>{ok ? ok_msg || "OK" : ko_msg || "Pendiente"}</span>
+      <span className={ok ? "status good" : "status warn"}>{ok ? ok_msg || t("admin.ops.row.ok") : ko_msg || t("admin.ops.row.pending")}</span>
     </div>
   );
 }

@@ -5,9 +5,11 @@ import { useToast } from "../../../components/toast";
 import { api, ApiError } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+import { useT } from "../../../lib/i18n";
 
 export default function DoNotCallPage() {
   const tenant = useTenantScope();
+  const t = useT();
   const dnc = useResource(() => api.dnc(tenant), [tenant]);
   const toast = useToast();
   const [phone, setPhone] = useState("");
@@ -20,24 +22,24 @@ export default function DoNotCallPage() {
     setSubmitting(true);
     try {
       await api.addDNC({ phone: phone.trim(), reason }, tenant);
-      toast.push("Número añadido a la lista", "success");
+      toast.push(t("dnc.toast.added"), "success");
       setPhone("");
       dnc.reload();
     } catch (err) {
-      toast.push(`No se pudo añadir: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("dnc.toast.add_failed", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleRemove(id: string, phoneNumber: string) {
-    if (!confirm(`Eliminar ${phoneNumber} de la lista? Volverá a poder recibir llamadas.`)) return;
+    if (!confirm(t("dnc.toast.remove_confirm", { phone: phoneNumber }))) return;
     try {
       await api.removeDNC(id, tenant);
-      toast.push("Número liberado", "success");
+      toast.push(t("dnc.toast.removed"), "success");
       dnc.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("dnc.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
@@ -47,57 +49,54 @@ export default function DoNotCallPage() {
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Portal cliente</p>
-          <h1>Do Not Call</h1>
-          <p className="subtle">
-            Números bloqueados para llamadas salientes. Cada intento de originar una llamada hacia uno de
-            estos números es rechazado por el backend antes de tocar Asterisk.
-          </p>
+          <p className="eyebrow">{t("portal.eyebrow")}</p>
+          <h1>{t("dnc.title")}</h1>
+          <p className="subtle">{t("dnc.subtitle.full")}</p>
         </div>
       </div>
 
       <form className="panel" style={{ marginBottom: 16 }} onSubmit={handleAdd}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Añadir número</p>
-            <h2>Bloquear un teléfono</h2>
+            <p className="eyebrow">{t("dnc.form.eyebrow")}</p>
+            <h2>{t("dnc.form.title")}</h2>
           </div>
         </div>
         <div className="form-grid">
           <div className="field">
-            <label>Teléfono (E.164)</label>
+            <label>{t("dnc.form.phone")}</label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+34600123456" required />
           </div>
           <div className="field">
-            <label>Motivo</label>
+            <label>{t("dnc.form.reason")}</label>
             <select value={reason} onChange={(e) => setReason(e.target.value)}>
-              <option value="opt_out">El destinatario pidió no recibir llamadas</option>
-              <option value="complaint">Queja</option>
-              <option value="legal">Requerimiento legal</option>
-              <option value="manual">Bloqueo manual</option>
+              <option value="opt_out">{t("dnc.form.reason.opt_out")}</option>
+              <option value="complaint">{t("dnc.form.reason.complaint")}</option>
+              <option value="legal">{t("dnc.form.reason.legal")}</option>
+              <option value="manual">{t("dnc.form.reason.manual")}</option>
             </select>
           </div>
         </div>
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="button" disabled={submitting}>
-            {submitting ? "Guardando…" : "Bloquear número"}
+            {submitting ? t("dnc.form.submitting") : t("dnc.form.submit")}
           </button>
         </div>
       </form>
 
       <div className="table-wrap">
         {dnc.loading ? (
-          <div className="empty-state">Cargando…</div>
+          <div className="empty-state">{t("g.loading")}</div>
         ) : entries.length === 0 ? (
-          <div className="empty-state">Aún no hay números bloqueados.</div>
+          <div className="empty-state">{t("dnc.table.empty")}</div>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>Teléfono</th>
-                <th>Motivo</th>
-                <th>Añadido</th>
-                <th>Acción</th>
+                <th>{t("dnc.field.phone")}</th>
+                <th>{t("dnc.field.reason")}</th>
+                <th>{t("dnc.field.added")}</th>
+                <th>{t("dnc.table.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -112,7 +111,7 @@ export default function DoNotCallPage() {
                   <td>{new Date(e.createdAt).toLocaleString()}</td>
                   <td>
                     <button className="button ghost compact" onClick={() => handleRemove(e.id, e.phone)}>
-                      Liberar
+                      {t("dnc.table.release")}
                     </button>
                   </td>
                 </tr>

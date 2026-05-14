@@ -5,9 +5,10 @@ import Link from "next/link";
 import { PhoneCall, Trash2, Upload } from "lucide-react";
 import { TestCallDrawer } from "../../../components/test-call-drawer";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, ImportResult, Lead, statusClass } from "../../../lib/api";
+import { api, ApiError, ImportResult, Lead } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+import { useT } from "../../../lib/i18n";
 
 const TYPE_FILTERS = ["all", "renter", "owner"] as const;
 const STATUS_FILTERS = ["all", "new", "qualified", "callback", "do_not_call"] as const;
@@ -15,6 +16,7 @@ const LEAD_STATUSES = ["new", "qualified", "callback", "contacted", "do_not_call
 
 export default function LeadsPage() {
   const tenant = useTenantScope();
+  const t = useT();
   const leads = useResource(() => api.leads(tenant), [tenant]);
   const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
@@ -49,11 +51,14 @@ export default function LeadsPage() {
       const csv = await file.text();
       const res = await api.importLeads(csv, tenant);
       setImportResult(res);
-      toast.push(`Importados ${res.created} · ${res.skipped} omitidos · ${res.invalid} inválidos`, res.created > 0 ? "success" : "warn");
+      toast.push(
+        t("leads.toast.import_summary", { created: res.created, skipped: res.skipped, invalid: res.invalid }),
+        res.created > 0 ? "success" : "warn"
+      );
       leads.reload();
     } catch (err) {
       const code = err instanceof ApiError ? err.code : "error";
-      toast.push(`Error importando: ${code}`, "danger");
+      toast.push(t("leads.toast.import_failed", { err: code }), "danger");
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -63,33 +68,33 @@ export default function LeadsPage() {
   async function handleCreate(input: Partial<Lead>) {
     try {
       await api.createLead(input, tenant);
-      toast.push("Lead creado", "success");
+      toast.push(t("leads.toast.created"), "success");
       setFormOpen(false);
       leads.reload();
     } catch (err) {
       const code = err instanceof ApiError ? err.code : "error";
-      toast.push(`No se pudo crear: ${code}`, "danger");
+      toast.push(t("leads.toast.create_failed", { err: code }), "danger");
     }
   }
 
   async function handleStatusChange(lead: Lead, status: string) {
     try {
       await api.updateLead(lead.id, { status }, tenant);
-      toast.push("Estado actualizado", "success");
+      toast.push(t("leads.toast.status_updated"), "success");
       leads.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("leads.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handleDelete(lead: Lead) {
-    if (!confirm(`Eliminar el lead "${lead.name}"?`)) return;
+    if (!confirm(t("leads.toast.delete_confirm", { name: lead.name }))) return;
     try {
       await api.deleteLead(lead.id, tenant);
-      toast.push("Lead eliminado", "success");
+      toast.push(t("leads.toast.deleted"), "success");
       leads.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("leads.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
@@ -97,17 +102,17 @@ export default function LeadsPage() {
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Portal cliente</p>
-          <h1>Leads</h1>
-          <p className="subtle">Contactos disponibles para campañas, llamadas de seguimiento y handoff comercial.</p>
+          <p className="eyebrow">{t("portal.eyebrow")}</p>
+          <h1>{t("leads.title")}</h1>
+          <p className="subtle">{t("leads.subtitle.full")}</p>
         </div>
         <div className="actions">
           <button className="button secondary" onClick={() => setFormOpen((v) => !v)}>
-            {formOpen ? "Cancelar" : "Nuevo lead"}
+            {formOpen ? t("leads.btn.cancel") : t("leads.new")}
           </button>
           <button className="button" disabled={importing} onClick={() => fileRef.current?.click()}>
             <Upload aria-hidden="true" />
-            <span>{importing ? "Importando…" : "Importar CSV"}</span>
+            <span>{importing ? t("leads.btn.importing") : t("leads.import")}</span>
           </button>
           <input
             ref={fileRef}
@@ -124,23 +129,28 @@ export default function LeadsPage() {
 
       {importResult ? (
         <div className="panel" style={{ marginBottom: 12 }}>
-          <p className="eyebrow">Resultado de importación</p>
+          <p className="eyebrow">{t("leads.import.eyebrow")}</p>
           <h2>
-            {importResult.created} creados · {importResult.skipped} omitidos · {importResult.invalid} inválidos
+            {t("leads.import.summary", {
+              created: importResult.created,
+              skipped: importResult.skipped,
+              invalid: importResult.invalid,
+            })}
           </h2>
           {importResult.errors && importResult.errors.length > 0 ? (
             <details>
-              <summary className="subtle">{importResult.errors.length} errores</summary>
+              <summary className="subtle">{t("leads.import.errors", { n: importResult.errors.length })}</summary>
               <pre className="code-block">{importResult.errors.join("\n")}</pre>
             </details>
           ) : null}
           <p className="subtle">
-            Formato: cabecera con columnas <code>name,phone,email,type,source,consent</code>. Solo
-            <code> name</code> y <code>phone</code> son obligatorios. Los teléfonos en DNC o duplicados
-            se omiten.
+            {t("leads.import.format", {
+              cols: "name,phone,email,type,source,consent",
+              req: "name, phone",
+            })}
           </p>
           <button className="button ghost compact" onClick={() => setImportResult(null)}>
-            Cerrar
+            {t("btn.close")}
           </button>
         </div>
       ) : null}
@@ -155,7 +165,7 @@ export default function LeadsPage() {
               className={`chip-button${typeFilter === opt ? " active" : ""}`}
               onClick={() => setTypeFilter(opt)}
             >
-              {opt === "all" ? "Todos" : opt}
+              {opt === "all" ? t("leads.filter.alltypes") : opt}
             </button>
           ))}
           <span className="filter-sep" />
@@ -165,13 +175,13 @@ export default function LeadsPage() {
               className={`chip-button${statusFilter === opt ? " active" : ""}`}
               onClick={() => setStatusFilter(opt)}
             >
-              {opt === "all" ? "Cualquier estado" : opt}
+              {opt === "all" ? t("leads.filter.anystatus") : opt}
             </button>
           ))}
         </div>
         <input
           className="search-input"
-          placeholder="Buscar por nombre, teléfono o email…"
+          placeholder={t("leads.search.placeholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -179,23 +189,23 @@ export default function LeadsPage() {
 
       <div className="table-wrap">
         {leads.loading ? (
-          <div className="empty-state">Cargando leads…</div>
+          <div className="empty-state">{t("leads.empty.loading")}</div>
         ) : leads.error ? (
-          <div className="empty-state danger">Error: {leads.error}</div>
+          <div className="empty-state danger">{t("g.error")}: {leads.error}</div>
         ) : filtered.length === 0 ? (
-          <div className="empty-state">Sin leads que coincidan con el filtro.</div>
+          <div className="empty-state">{t("leads.empty.nomatch")}</div>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Teléfono</th>
-                <th>Email</th>
-                <th>Tipo</th>
-                <th>Estado</th>
-                <th>Fuente</th>
-                <th>Consentimiento</th>
-                <th>Acción</th>
+                <th>{t("col.name")}</th>
+                <th>{t("col.phone")}</th>
+                <th>{t("leads.col.email")}</th>
+                <th>{t("col.type")}</th>
+                <th>{t("col.status")}</th>
+                <th>{t("leads.col.source")}</th>
+                <th>{t("leads.col.consent")}</th>
+                <th>{t("leads.col.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -229,7 +239,7 @@ export default function LeadsPage() {
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="button ghost compact" onClick={() => setDrawerLead(lead)}>
                       <PhoneCall aria-hidden="true" />
-                      <span>Llamar</span>
+                      <span>{t("leads.actions.call")}</span>
                     </button>
                     <button className="button ghost compact" onClick={() => handleDelete(lead)}>
                       <Trash2 aria-hidden="true" />
@@ -253,6 +263,7 @@ export default function LeadsPage() {
 }
 
 function NewLeadForm({ onSubmit }: { onSubmit: (input: Partial<Lead>) => Promise<void> }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -274,42 +285,42 @@ function NewLeadForm({ onSubmit }: { onSubmit: (input: Partial<Lead>) => Promise
     >
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Nuevo lead</p>
-          <h2>Crear contacto</h2>
+          <p className="eyebrow">{t("leads.form.eyebrow")}</p>
+          <h2>{t("leads.form.title")}</h2>
         </div>
       </div>
       <div className="form-grid">
         <div className="field">
-          <label>Nombre</label>
+          <label>{t("col.name")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="field">
-          <label>Teléfono</label>
+          <label>{t("col.phone")}</label>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} required />
         </div>
         <div className="field">
-          <label>Email</label>
+          <label>{t("leads.col.email")}</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="field">
-          <label>Tipo</label>
+          <label>{t("col.type")}</label>
           <select value={type} onChange={(e) => setType(e.target.value)}>
             <option value="renter">Renter</option>
             <option value="owner">Owner</option>
           </select>
         </div>
         <div className="field">
-          <label>Fuente</label>
+          <label>{t("leads.col.source")}</label>
           <input value={source} onChange={(e) => setSource(e.target.value)} />
         </div>
         <div className="field">
-          <label>Consentimiento</label>
+          <label>{t("leads.col.consent")}</label>
           <input value={consent} onChange={(e) => setConsent(e.target.value)} />
         </div>
       </div>
       <div className="actions" style={{ marginTop: 12 }}>
         <button className="button" disabled={submitting}>
-          {submitting ? "Guardando…" : "Crear lead"}
+          {submitting ? t("leads.form.submitting") : t("leads.form.submit")}
         </button>
       </div>
     </form>

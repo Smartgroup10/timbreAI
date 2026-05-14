@@ -22,32 +22,35 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, Tenant } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { useT, useLang } from "../lib/i18n";
 import { BrandMark } from "./logo";
 
-type NavItem = { icon: LucideIcon; label: string; href: string };
+type NavItem = { icon: LucideIcon; labelKey: string; href: string };
 
 const portalLinks: NavItem[] = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/portal" },
-  { icon: Users, label: "Leads", href: "/portal/leads" },
-  { icon: Home, label: "Propiedades", href: "/portal/properties" },
-  { icon: Bot, label: "Bots", href: "/portal/bots" },
-  { icon: Megaphone, label: "Campañas", href: "/portal/campaigns" },
-  { icon: PhoneCall, label: "Llamadas", href: "/portal/calls" },
-  { icon: PhoneOff, label: "Do Not Call", href: "/portal/do-not-call" },
-  { icon: ClipboardList, label: "Auditoría", href: "/portal/audit" },
-  { icon: Settings, label: "Configuración", href: "/portal/settings" },
+  { icon: LayoutDashboard, labelKey: "nav.dashboard", href: "/portal" },
+  { icon: Users, labelKey: "nav.leads", href: "/portal/leads" },
+  { icon: Home, labelKey: "nav.properties", href: "/portal/properties" },
+  { icon: Bot, labelKey: "nav.bots", href: "/portal/bots" },
+  { icon: Megaphone, labelKey: "nav.campaigns", href: "/portal/campaigns" },
+  { icon: PhoneCall, labelKey: "nav.calls", href: "/portal/calls" },
+  { icon: PhoneOff, labelKey: "nav.dnc", href: "/portal/do-not-call" },
+  { icon: ClipboardList, labelKey: "nav.audit", href: "/portal/audit" },
+  { icon: Settings, labelKey: "nav.settings", href: "/portal/settings" },
 ];
 
 const adminLinks: NavItem[] = [
-  { icon: Building2, label: "Clientes", href: "/admin" },
-  { icon: Server, label: "Trunks y DIDs", href: "/admin/trunks" },
-  { icon: ShieldAlert, label: "Audit global", href: "/admin/audit" },
-  { icon: Activity, label: "Operaciones", href: "/admin/operations" },
+  { icon: Building2, labelKey: "nav.tenants", href: "/admin" },
+  { icon: Server, labelKey: "nav.trunks", href: "/admin/trunks" },
+  { icon: ShieldAlert, labelKey: "nav.audit.global", href: "/admin/audit" },
+  { icon: Activity, labelKey: "nav.operations", href: "/admin/operations" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
   const { user, logout, tenantOverride, setTenantOverride } = useAuth();
+  const t = useT();
+  const { lang, setLang } = useLang();
   const isAdmin = user?.role === "platform_admin";
   const [tenants, setTenants] = useState<Tenant[]>([]);
 
@@ -76,12 +79,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <strong>
               timbre<span className="brand-ai">.ai</span>
             </strong>
-            <span>Voice AI · agentes con tono propio</span>
+            <span>{t("shell.tagline")}</span>
           </div>
         </div>
 
         <div className="tenant-card">
-          <span>Tenant activo</span>
+          <span>{t("shell.tenant.active")}</span>
           <strong>{activeTenantName || "—"}</strong>
           {isAdmin ? (
             <select
@@ -89,49 +92,71 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               value={tenantOverride}
               onChange={(event) => setTenantOverride(event.target.value)}
             >
-              <option value="">Mi tenant (si lo tengo)</option>
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
+              <option value="">{t("shell.tenant.mine")}</option>
+              {tenants.map((tn) => (
+                <option key={tn.id} value={tn.id}>
+                  {tn.name}
                 </option>
               ))}
             </select>
           ) : (
-            <span>{user?.role === "tenant_admin" ? "Acceso operador" : "Acceso usuario"}</span>
+            <span>{user?.role === "tenant_admin" ? t("shell.access.operator") : t("shell.access.user")}</span>
           )}
         </div>
 
-        <div className="nav-section">Portal cliente</div>
+        <div className="nav-section">{t("shell.section.portal")}</div>
         <div className="nav-group">
-          {portalLinks.map(({ icon: Icon, label, href }) => (
+          {portalLinks.map(({ icon: Icon, labelKey, href }) => (
             <Link
               className={`nav-link${isActive(href) ? " active" : ""}`}
               href={href}
               key={href}
             >
               <Icon aria-hidden="true" />
-              <span>{label}</span>
+              <span>{t(labelKey)}</span>
             </Link>
           ))}
         </div>
 
         {isAdmin ? (
           <>
-            <div className="nav-section">Admin interno</div>
+            <div className="nav-section">{t("shell.section.admin")}</div>
             <div className="nav-group">
-              {adminLinks.map(({ icon: Icon, label, href }) => (
+              {adminLinks.map(({ icon: Icon, labelKey, href }) => (
                 <Link
                   className={`nav-link${isActive(href) ? " active" : ""}`}
                   href={href}
                   key={href}
                 >
                   <Icon aria-hidden="true" />
-                  <span>{label}</span>
+                  <span>{t(labelKey)}</span>
                 </Link>
               ))}
             </div>
           </>
         ) : null}
+
+        <div className="lang-switch">
+          <span className="lang-switch-label">{t("lang.label")}</span>
+          <div className="lang-switch-buttons">
+            <button
+              type="button"
+              className={`lang-switch-btn${lang === "es" ? " active" : ""}`}
+              onClick={() => setLang("es")}
+              aria-pressed={lang === "es"}
+            >
+              ES
+            </button>
+            <button
+              type="button"
+              className={`lang-switch-btn${lang === "en" ? " active" : ""}`}
+              onClick={() => setLang("en")}
+              aria-pressed={lang === "en"}
+            >
+              EN
+            </button>
+          </div>
+        </div>
 
         <div className="user-card">
           <div className="user-card-row">
@@ -143,7 +168,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <button className="button ghost compact logout-button" onClick={logout}>
             <LogOut aria-hidden="true" />
-            <span>Cerrar sesión</span>
+            <span>{t("shell.logout")}</span>
           </button>
         </div>
       </aside>
@@ -151,11 +176,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {isAdmin && tenantOverride ? (
           <div className="impersonation-banner" role="status">
             <span>
-              Estás operando como tenant <strong>{activeTenantName}</strong>. Cualquier cambio
-              afecta a sus datos en producción.
+              {t("shell.impersonation.text", { tenant: activeTenantName })}
             </span>
             <button className="button ghost compact" onClick={() => setTenantOverride("")}>
-              Salir del modo impersonación
+              {t("shell.impersonation.exit")}
             </button>
           </div>
         ) : null}

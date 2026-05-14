@@ -5,14 +5,17 @@ import { ArrowDownRight, ArrowUpRight, Minus, Phone, PhoneCall } from "lucide-re
 import { StatCard } from "../../components/stat-card";
 import { TestCallDrawer } from "../../components/test-call-drawer";
 import { DailyBars, HBars } from "../../components/charts";
-import { api, Call, statusClass, statusLabel } from "../../lib/api";
+import { api, Call, statusClass } from "../../lib/api";
 import { useTenantScope } from "../../lib/auth-context";
 import { useResource } from "../../lib/use-resource";
+import { useT, useStatusLabel } from "../../lib/i18n";
 
 const LIVE_STATUSES = new Set(["queued", "dialing", "in_progress", "answered"]);
 
 export default function PortalDashboard() {
   const tenant = useTenantScope();
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const overview = useResource(() => api.overview(tenant), [tenant]);
   const analytics = useResource(() => api.analytics(tenant), [tenant]);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -42,52 +45,50 @@ export default function PortalDashboard() {
     };
   }, [tenant]);
 
-  const trend = computeTrend(analytics.data?.totalsLast7 ?? 0, analytics.data?.totalsPrev7 ?? 0);
+  const trend = computeTrend(analytics.data?.totalsLast7 ?? 0, analytics.data?.totalsPrev7 ?? 0, t);
 
   return (
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Portal cliente</p>
-          <h1>Centro de llamadas IA</h1>
-          <p className="subtle">
-            Vista en vivo de campañas, bots y resultados. Lo que esté pasando ahora aparece arriba.
-          </p>
+          <p className="eyebrow">{t("portal.eyebrow")}</p>
+          <h1>{t("portal.title")}</h1>
+          <p className="subtle">{t("portal.subtitle")}</p>
         </div>
         <div className="actions">
           <button className="button secondary" onClick={() => setDrawerOpen(true)}>
-            Llamada de prueba
+            {t("portal.testcall")}
           </button>
           <a className="button" href="/portal/campaigns">
-            Nueva campaña
+            {t("portal.newcampaign")}
           </a>
         </div>
       </div>
 
       <div className="grid">
         <StatCard
-          label="En curso ahora"
+          label={t("portal.stat.live")}
           value={liveCalls.length}
-          hint={liveCalls.length === 0 ? "Sin llamadas activas" : "Refresca cada 5s"}
-          trend={liveCalls.length > 0 ? "Live" : ""}
+          hint={liveCalls.length === 0 ? t("portal.stat.live.empty") : t("portal.stat.live.refresh")}
+          trend={liveCalls.length > 0 ? t("portal.trend.live") : ""}
         />
         <StatCard
-          label="Llamadas hoy"
+          label={t("portal.stat.today")}
           value={overview.data?.callsToday ?? "—"}
-          hint="Total iniciadas en las últimas 24h"
-          trend={overview.loading ? "Cargando…" : ""}
+          hint={t("portal.stat.today.hint")}
+          trend={overview.loading ? t("portal.trend.loading") : ""}
         />
         <StatCard
-          label="Leads calificados"
+          label={t("portal.stat.qualified")}
           value={overview.data?.qualifiedLeads ?? "—"}
-          hint="Outcome=qualified"
-          trend="Listos para seguimiento humano"
+          hint={t("portal.stat.qualified.hint")}
+          trend={t("portal.stat.qualified.trend")}
         />
         <StatCard
-          label="Campañas activas"
+          label={t("portal.stat.activecampaigns")}
           value={overview.data?.activeCampaigns ?? "—"}
-          hint={`${overview.data?.queuedCalls ?? 0} llamadas en cola`}
-          trend={overview.data?.queuedCalls ? "Cola con llamadas" : ""}
+          hint={t("portal.stat.queued", { n: overview.data?.queuedCalls ?? 0 })}
+          trend={overview.data?.queuedCalls ? t("portal.stat.queued.hasqueue") : ""}
         />
       </div>
 
@@ -99,24 +100,23 @@ export default function PortalDashboard() {
             <div>
               <p className="eyebrow">
                 <PhoneCall aria-hidden="true" style={{ verticalAlign: "middle", marginRight: 4 }} />
-                En vivo
+                {t("portal.live.eyebrow")}
               </p>
-              <h2>Llamadas activas ahora</h2>
+              <h2>{t("portal.live.title")}</h2>
             </div>
-            {liveCalls.length > 0 ? <span className="status good">{liveCalls.length} en curso</span> : null}
+            {liveCalls.length > 0 ? (
+              <span className="status good">{t("portal.live.count", { n: liveCalls.length })}</span>
+            ) : null}
           </div>
           {liveCalls.length === 0 ? (
-            <p className="subtle">
-              Ninguna llamada en marcha. Lanza una campaña desde <a href="/portal/campaigns">Campañas</a> o usa{" "}
-              el botón <strong>Llamada de prueba</strong> arriba.
-            </p>
+            <p className="subtle">{t("portal.live.empty")}</p>
           ) : (
             <table>
               <thead>
                 <tr>
-                  <th>Lead</th>
-                  <th>Teléfono</th>
-                  <th>Status</th>
+                  <th>{t("col.lead")}</th>
+                  <th>{t("col.phone")}</th>
+                  <th>{t("col.status")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,9 +139,9 @@ export default function PortalDashboard() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">7 días</p>
+              <p className="eyebrow">{t("portal.charts.7d")}</p>
               <h2>
-                {analytics.data?.totalsLast7 ?? "—"} llamadas{" "}
+                {t("portal.calls.unit", { n: analytics.data?.totalsLast7 ?? "—" })}{" "}
                 <span className={`stat-trend trend-${trend.dir}`}>
                   {trend.icon} {trend.label}
                 </span>
@@ -158,25 +158,25 @@ export default function PortalDashboard() {
           <div>
             <p className="eyebrow">
               <Phone aria-hidden="true" style={{ verticalAlign: "middle", marginRight: 4 }} />
-              Recientes
+              {t("portal.recent.eyebrow")}
             </p>
-            <h2>Últimas llamadas finalizadas</h2>
+            <h2>{t("portal.recent.title")}</h2>
           </div>
           <a className="button ghost compact" href="/portal/calls">
-            Ver todas
+            {t("portal.recent.viewall")}
           </a>
         </div>
         {recentCalls.length === 0 ? (
-          <p className="subtle">Aún no hay llamadas finalizadas en este tenant.</p>
+          <p className="subtle">{t("portal.recent.empty")}</p>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>Lead</th>
-                <th>Teléfono</th>
-                <th>Campaña</th>
-                <th>Outcome</th>
-                <th>Duración</th>
+                <th>{t("col.lead")}</th>
+                <th>{t("col.phone")}</th>
+                <th>{t("col.campaign")}</th>
+                <th>{t("col.outcome")}</th>
+                <th>{t("col.duration")}</th>
               </tr>
             </thead>
             <tbody>
@@ -202,8 +202,8 @@ export default function PortalDashboard() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Outcomes</p>
-              <h2>Últimos 30 días</h2>
+              <p className="eyebrow">{t("portal.charts.outcomes.eyebrow")}</p>
+              <h2>{t("portal.charts.outcomes.title")}</h2>
             </div>
           </div>
           <HBars data={analytics.data?.outcomes ?? []} />
@@ -212,8 +212,8 @@ export default function PortalDashboard() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Status</p>
-              <h2>Distribución</h2>
+              <p className="eyebrow">{t("portal.charts.statuses.eyebrow")}</p>
+              <h2>{t("portal.charts.statuses.title")}</h2>
             </div>
           </div>
           <HBars data={analytics.data?.statuses ?? []} accent="var(--accent)" />
@@ -222,8 +222,8 @@ export default function PortalDashboard() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Top bots</p>
-              <h2>Volumen 30 días</h2>
+              <p className="eyebrow">{t("portal.charts.bots.eyebrow")}</p>
+              <h2>{t("portal.charts.bots.title")}</h2>
             </div>
           </div>
           <HBars data={analytics.data?.topBots ?? []} accent="var(--accent-strong)" />
@@ -232,8 +232,8 @@ export default function PortalDashboard() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Top campañas</p>
-              <h2>Volumen 30 días</h2>
+              <p className="eyebrow">{t("portal.charts.campaigns.eyebrow")}</p>
+              <h2>{t("portal.charts.campaigns.title")}</h2>
             </div>
           </div>
           <HBars data={analytics.data?.topCampaigns ?? []} accent="#6366f1" />
@@ -245,12 +245,16 @@ export default function PortalDashboard() {
   );
 }
 
-function computeTrend(now: number, prev: number) {
+function computeTrend(now: number, prev: number, t: (k: string, vars?: Record<string, string | number>) => string) {
   if (prev === 0) {
-    return { dir: "flat" as const, icon: <Minus aria-hidden="true" />, label: now > 0 ? "Sin base comparable" : "0%" };
+    return {
+      dir: "flat" as const,
+      icon: <Minus aria-hidden="true" />,
+      label: now > 0 ? t("portal.trend.nobase") : t("portal.trend.zero"),
+    };
   }
   const pct = Math.round(((now - prev) / prev) * 100);
-  if (pct > 0) return { dir: "up" as const, icon: <ArrowUpRight aria-hidden="true" />, label: `+${pct}% vs 7d ant.` };
-  if (pct < 0) return { dir: "down" as const, icon: <ArrowDownRight aria-hidden="true" />, label: `${pct}% vs 7d ant.` };
-  return { dir: "flat" as const, icon: <Minus aria-hidden="true" />, label: "Sin cambios" };
+  if (pct > 0) return { dir: "up" as const, icon: <ArrowUpRight aria-hidden="true" />, label: t("portal.trend.up", { pct }) };
+  if (pct < 0) return { dir: "down" as const, icon: <ArrowDownRight aria-hidden="true" />, label: t("portal.trend.down", { pct }) };
+  return { dir: "flat" as const, icon: <Minus aria-hidden="true" />, label: t("portal.trend.flat") };
 }

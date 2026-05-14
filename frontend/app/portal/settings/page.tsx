@@ -6,6 +6,7 @@ import { useToast } from "../../../components/toast";
 import { api, ApiError, TenantSettings, User, VoiceCredentials } from "../../../lib/api";
 import { useAuth, useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+import { useT } from "../../../lib/i18n";
 
 const TIMEZONES = [
   "Europe/Madrid",
@@ -18,19 +19,12 @@ const TIMEZONES = [
   "UTC",
 ];
 
-const WEEKDAYS: { key: string; label: string }[] = [
-  { key: "mon", label: "Lun" },
-  { key: "tue", label: "Mar" },
-  { key: "wed", label: "Mié" },
-  { key: "thu", label: "Jue" },
-  { key: "fri", label: "Vie" },
-  { key: "sat", label: "Sáb" },
-  { key: "sun", label: "Dom" },
-];
+const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const tenant = useTenantScope();
+  const t = useT();
   const settingsRes = useResource(() => api.tenantSettings(tenant), [tenant]);
   const toast = useToast();
 
@@ -43,27 +37,27 @@ export default function SettingsPage() {
     <>
       <div className="topbar">
         <div className="page-title">
-          <p className="eyebrow">Portal cliente</p>
-          <h1>Configuración</h1>
-          <p className="subtle">Parámetros de cuenta, telefonía y horarios de operación.</p>
+          <p className="eyebrow">{t("portal.eyebrow")}</p>
+          <h1>{t("settings.title")}</h1>
+          <p className="subtle">{t("settings.subtitle.full")}</p>
         </div>
       </div>
 
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Tu cuenta</p>
+            <p className="eyebrow">{t("settings.account.eyebrow")}</p>
             <h2>{user?.name || user?.email}</h2>
           </div>
           <span className="chip">{user?.role}</span>
         </div>
         <div className="form-grid">
           <div className="field">
-            <label>Email</label>
+            <label>{t("login.email")}</label>
             <input value={user?.email ?? ""} readOnly />
           </div>
           <div className="field">
-            <label>Tenant</label>
+            <label>{t("settings.account.tenant")}</label>
             <input value={user?.tenantId ?? "(platform)"} readOnly />
           </div>
         </div>
@@ -72,8 +66,8 @@ export default function SettingsPage() {
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Seguridad</p>
-            <h2>Cambiar contraseña</h2>
+            <p className="eyebrow">{t("settings.security.eyebrow")}</p>
+            <h2>{t("settings.security.title")}</h2>
           </div>
         </div>
         <form
@@ -81,50 +75,48 @@ export default function SettingsPage() {
           onSubmit={async (event) => {
             event.preventDefault();
             if (next.length < 8) {
-              toast.push("La nueva contraseña debe tener al menos 8 caracteres", "warn");
+              toast.push(t("settings.security.warn.minlen"), "warn");
               return;
             }
             if (next !== confirm) {
-              toast.push("La confirmación no coincide", "warn");
+              toast.push(t("settings.security.warn.mismatch"), "warn");
               return;
             }
             setSubmitting(true);
             try {
               await api.changePassword(current, next);
-              toast.push("Contraseña actualizada", "success");
+              toast.push(t("settings.security.toast.updated"), "success");
               setCurrent("");
               setNext("");
               setConfirm("");
             } catch (err) {
               const code = err instanceof ApiError ? err.code : "error";
-              const label = code === "invalid_current_password" ? "La contraseña actual no es correcta" : code;
-              toast.push(`Error: ${label}`, "danger");
+              const label = code === "invalid_current_password" ? t("settings.security.toast.invalid_current") : code;
+              toast.push(`${t("g.error")}: ${label}`, "danger");
             } finally {
               setSubmitting(false);
             }
           }}
         >
           <div className="field">
-            <label>Contraseña actual</label>
+            <label>{t("settings.security.current")}</label>
             <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
           </div>
           <div className="field">
-            <label>Nueva contraseña</label>
+            <label>{t("settings.security.new")}</label>
             <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} minLength={8} required />
           </div>
           <div className="field">
-            <label>Confirmar nueva contraseña</label>
+            <label>{t("settings.security.confirm")}</label>
             <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
           </div>
           <div className="field" style={{ alignSelf: "end" }}>
             <button className="button" disabled={submitting}>
-              {submitting ? "Guardando…" : "Actualizar contraseña"}
+              {submitting ? t("settings.security.submitting") : t("settings.security.submit")}
             </button>
           </div>
         </form>
-        <p className="subtle" style={{ marginTop: 12 }}>
-          Mínimo 8 caracteres. Los tokens emitidos antes del cambio siguen siendo válidos hasta su expiración natural.
-        </p>
+        <p className="subtle" style={{ marginTop: 12 }}>{t("settings.security.hint")}</p>
       </section>
 
       <TenantSettingsPanel settings={settingsRes.data} loading={settingsRes.loading} error={settingsRes.error} onSaved={() => settingsRes.reload()} tenant={tenant} />
@@ -137,6 +129,7 @@ export default function SettingsPage() {
 }
 
 function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | undefined; canManage: boolean; currentUserId: string | undefined }) {
+  const t = useT();
   const team = useResource(() => api.tenantUsers(tenant), [tenant]);
   const toast = useToast();
   const [formOpen, setFormOpen] = useState(false);
@@ -145,34 +138,34 @@ function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | unde
   async function handleInvite(input: { email: string; name: string; role: string }) {
     try {
       const res = await api.inviteTenantUser(input, tenant);
-      toast.push(`Usuario ${res.user.email} creado`, "success");
+      toast.push(t("settings.team.toast.created", { email: res.user.email }), "success");
       setTempPwd({ email: res.user.email, pwd: res.tempPassword });
       setFormOpen(false);
       team.reload();
     } catch (err) {
       const code = err instanceof ApiError ? err.code : "error";
-      toast.push(`No se pudo crear: ${code}`, "danger");
+      toast.push(t("settings.team.toast.create_failed", { err: code }), "danger");
     }
   }
 
   async function handleRoleChange(u: User, role: string) {
     try {
       await api.updateTenantUserRole(u.id, role, tenant);
-      toast.push("Rol actualizado", "success");
+      toast.push(t("settings.team.toast.role_updated"), "success");
       team.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("settings.team.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
   async function handleDelete(u: User) {
-    if (!confirm(`Eliminar a ${u.email}? Perderá acceso inmediatamente.`)) return;
+    if (!confirm(t("settings.team.toast.delete_confirm", { email: u.email }))) return;
     try {
       await api.deleteTenantUser(u.id, tenant);
-      toast.push("Usuario eliminado", "success");
+      toast.push(t("settings.team.toast.deleted"), "success");
       team.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("settings.team.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     }
   }
 
@@ -182,32 +175,30 @@ function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | unde
     <section className="panel" style={{ marginTop: 16 }}>
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Equipo</p>
-          <h2>Miembros del tenant</h2>
+          <p className="eyebrow">{t("settings.team.eyebrow")}</p>
+          <h2>{t("settings.team.title")}</h2>
         </div>
         {canManage ? (
           <button className="button compact" onClick={() => setFormOpen((v) => !v)}>
             <UserPlus aria-hidden="true" />
-            <span>{formOpen ? "Cancelar" : "Invitar"}</span>
+            <span>{formOpen ? t("settings.team.cancel") : t("settings.team.invite")}</span>
           </button>
         ) : null}
       </div>
 
       {!canManage ? (
-        <p className="subtle">Necesitas rol <code>tenant_admin</code> para gestionar miembros.</p>
+        <p className="subtle">{t("settings.team.needadmin", { role: "tenant_admin" })}</p>
       ) : null}
 
       {tempPwd ? (
         <div className="panel" style={{ marginBottom: 12, background: "var(--accent-soft)", border: "1px solid var(--accent)" }}>
-          <p className="eyebrow">Contraseña temporal</p>
+          <p className="eyebrow">{t("settings.team.temp.eyebrow")}</p>
           <p>
             <strong>{tempPwd.email}</strong> · <code className="mono">{tempPwd.pwd}</code>
           </p>
-          <p className="subtle">
-            Compártela por un canal seguro. El usuario debería cambiarla en Configuración después de su primer login.
-          </p>
+          <p className="subtle">{t("settings.team.temp.hint")}</p>
           <button className="button secondary compact" onClick={() => setTempPwd(null)}>
-            Cerrar
+            {t("btn.close")}
           </button>
         </div>
       ) : null}
@@ -215,19 +206,19 @@ function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | unde
       {formOpen && canManage ? <InviteForm onSubmit={handleInvite} /> : null}
 
       {team.loading ? (
-        <div className="empty-state">Cargando…</div>
+        <div className="empty-state">{t("settings.team.empty.loading")}</div>
       ) : users.length === 0 ? (
-        <div className="empty-state">No hay miembros en este tenant aún.</div>
+        <div className="empty-state">{t("settings.team.empty")}</div>
       ) : (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Email</th>
-                <th>Rol</th>
-                <th>Último acceso</th>
-                <th>Acción</th>
+                <th>{t("col.name")}</th>
+                <th>{t("login.email")}</th>
+                <th>{t("settings.members.role")}</th>
+                <th>{t("settings.team.col.lastlogin")}</th>
+                <th>{t("settings.team.col.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -235,7 +226,7 @@ function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | unde
                 const isSelf = u.id === currentUserId;
                 return (
                   <tr key={u.id}>
-                    <td className="primary-cell">{u.name}{isSelf ? " (tú)" : ""}</td>
+                    <td className="primary-cell">{u.name}{isSelf ? t("settings.team.self") : ""}</td>
                     <td>{u.email}</td>
                     <td>
                       {canManage && !isSelf ? (
@@ -267,6 +258,7 @@ function TeamPanel({ tenant, canManage, currentUserId }: { tenant: string | unde
 }
 
 function InviteForm({ onSubmit }: { onSubmit: (input: { email: string; name: string; role: string }) => Promise<void> }) {
+  const t = useT();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState("tenant_agent");
@@ -288,30 +280,30 @@ function InviteForm({ onSubmit }: { onSubmit: (input: { email: string; name: str
     >
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Nuevo miembro</p>
-          <h2>Invitar usuario</h2>
+          <p className="eyebrow">{t("settings.invite.eyebrow")}</p>
+          <h2>{t("settings.invite.title")}</h2>
         </div>
       </div>
       <div className="form-grid">
         <div className="field">
-          <label>Nombre</label>
+          <label>{t("col.name")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="field">
-          <label>Email</label>
+          <label>{t("login.email")}</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <div className="field">
-          <label>Rol</label>
+          <label>{t("settings.members.role")}</label>
           <select value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="tenant_agent">tenant_agent (acceso operativo)</option>
-            <option value="tenant_admin">tenant_admin (gestiona equipo y settings)</option>
+            <option value="tenant_agent">{t("settings.invite.role.agent")}</option>
+            <option value="tenant_admin">{t("settings.invite.role.admin")}</option>
           </select>
         </div>
       </div>
       <div className="actions" style={{ marginTop: 12, justifyContent: "flex-start" }}>
         <button className="button" disabled={submitting}>
-          {submitting ? "Creando…" : "Crear usuario"}
+          {submitting ? t("settings.invite.submitting") : t("settings.invite.submit")}
         </button>
       </div>
     </form>
@@ -331,6 +323,7 @@ function TenantSettingsPanel({
   onSaved: () => void;
   tenant: string | undefined;
 }) {
+  const t = useT();
   const toast = useToast();
   const [timezone, setTimezone] = useState("Europe/Madrid");
   const [callerIdDefault, setCallerIdDefault] = useState("");
@@ -367,10 +360,10 @@ function TenantSettingsPanel({
         { timezone, callerIdDefault, allowedHoursStart, allowedHoursEnd, allowedDays, dailyCallCap, recordingEnabled },
         tenant,
       );
-      toast.push("Configuración guardada", "success");
+      toast.push(t("settings.tenant.toast.saved"), "success");
       onSaved();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("settings.tenant.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     } finally {
       setSubmitting(false);
     }
@@ -379,14 +372,14 @@ function TenantSettingsPanel({
   if (loading) {
     return (
       <section className="panel" style={{ marginTop: 16 }}>
-        <div className="empty-state">Cargando configuración…</div>
+        <div className="empty-state">{t("settings.tenant.loading")}</div>
       </section>
     );
   }
   if (error) {
     return (
       <section className="panel" style={{ marginTop: 16 }}>
-        <div className="empty-state danger">Error: {error}</div>
+        <div className="empty-state danger">{t("g.error")}: {error}</div>
       </section>
     );
   }
@@ -395,14 +388,14 @@ function TenantSettingsPanel({
     <form className="panel" style={{ marginTop: 16 }} onSubmit={handleSave}>
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Operación de llamadas</p>
-          <h2>Defaults del tenant</h2>
+          <p className="eyebrow">{t("settings.tenant.eyebrow")}</p>
+          <h2>{t("settings.tenant.title")}</h2>
         </div>
-        {dirty ? <span className="status warn">Cambios sin guardar</span> : <span className="status good">Sincronizado</span>}
+        {dirty ? <span className="status warn">{t("settings.tenant.dirty")}</span> : <span className="status good">{t("settings.tenant.synced")}</span>}
       </div>
       <div className="form-grid">
         <div className="field">
-          <label>Zona horaria</label>
+          <label>{t("settings.tenant.timezone")}</label>
           <select
             value={timezone}
             onChange={(e) => {
@@ -418,7 +411,7 @@ function TenantSettingsPanel({
           </select>
         </div>
         <div className="field">
-          <label>Caller ID por defecto</label>
+          <label>{t("settings.tenant.callerid")}</label>
           <input
             value={callerIdDefault}
             onChange={(e) => {
@@ -429,7 +422,7 @@ function TenantSettingsPanel({
           />
         </div>
         <div className="field">
-          <label>Hora de inicio</label>
+          <label>{t("settings.tenant.hours.start")}</label>
           <input
             type="time"
             value={allowedHoursStart}
@@ -440,7 +433,7 @@ function TenantSettingsPanel({
           />
         </div>
         <div className="field">
-          <label>Hora de cierre</label>
+          <label>{t("settings.tenant.hours.end")}</label>
           <input
             type="time"
             value={allowedHoursEnd}
@@ -451,7 +444,7 @@ function TenantSettingsPanel({
           />
         </div>
         <div className="field">
-          <label>Límite diario de llamadas</label>
+          <label>{t("settings.tenant.dailycap")}</label>
           <input
             type="number"
             min={0}
@@ -463,7 +456,7 @@ function TenantSettingsPanel({
           />
         </div>
         <div className="field">
-          <label>Grabación de llamadas</label>
+          <label>{t("settings.tenant.recording")}</label>
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -473,22 +466,20 @@ function TenantSettingsPanel({
                 setDirty(true);
               }}
             />
-            <span>
-              Grabar todas las llamadas (requiere consentimiento del lead).
-            </span>
+            <span>{t("settings.tenant.recording.hint")}</span>
           </label>
         </div>
         <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label>Días permitidos</label>
+          <label>{t("settings.tenant.alloweddays")}</label>
           <div className="filter-row">
-            {WEEKDAYS.map((d) => (
+            {WEEKDAY_KEYS.map((key) => (
               <button
                 type="button"
-                key={d.key}
-                className={`chip-button${allowedDays.includes(d.key) ? " active" : ""}`}
-                onClick={() => toggleDay(d.key)}
+                key={key}
+                className={`chip-button${allowedDays.includes(key) ? " active" : ""}`}
+                onClick={() => toggleDay(key)}
               >
-                {d.label}
+                {t(`settings.weekdays.${key}`)}
               </button>
             ))}
           </div>
@@ -496,7 +487,7 @@ function TenantSettingsPanel({
       </div>
       <div className="actions" style={{ marginTop: 14, justifyContent: "flex-start" }}>
         <button className="button" disabled={submitting || !dirty}>
-          {submitting ? "Guardando…" : "Guardar cambios"}
+          {submitting ? t("settings.tenant.submitting") : t("settings.tenant.submit")}
         </button>
         <button
           type="button"
@@ -515,12 +506,12 @@ function TenantSettingsPanel({
             }
           }}
         >
-          Descartar
+          {t("settings.tenant.discard")}
         </button>
       </div>
       {settings ? (
         <p className="subtle" style={{ marginTop: 12 }}>
-          Última actualización: {new Date(settings.updatedAt).toLocaleString()}
+          {t("settings.tenant.lastupdate", { when: new Date(settings.updatedAt).toLocaleString() })}
         </p>
       ) : null}
     </form>
@@ -528,6 +519,7 @@ function TenantSettingsPanel({
 }
 
 function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefined; canManage: boolean }) {
+  const t = useT();
   const creds = useResource(() => api.voiceCredentials(tenant), [tenant]);
   const toast = useToast();
   const [draft, setDraft] = useState<Partial<VoiceCredentials>>({});
@@ -542,11 +534,11 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Voz · proveedores</p>
-            <h2>Credenciales</h2>
+            <p className="eyebrow">{t("settings.voice.eyebrow")}</p>
+            <h2>{t("settings.voice.title")}</h2>
           </div>
         </div>
-        <p className="subtle">Necesitas rol <code>tenant_admin</code> para gestionar las API keys de voz.</p>
+        <p className="subtle">{t("settings.voice.needadmin", { role: "tenant_admin" })}</p>
       </section>
     );
   }
@@ -559,11 +551,11 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
     setSubmitting(true);
     try {
       await api.updateVoiceCredentials(draft, tenant);
-      toast.push("Credenciales actualizadas", "success");
+      toast.push(t("settings.voice.toast.updated"), "success");
       setDraft({});
       creds.reload();
     } catch (err) {
-      toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(t("settings.voice.toast.error", { err: err instanceof ApiError ? err.code : "error" }), "danger");
     } finally {
       setSubmitting(false);
     }
@@ -576,36 +568,32 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
     <section className="panel" style={{ marginTop: 16 }}>
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Voz · proveedores</p>
-          <h2>Credenciales del tenant</h2>
+          <p className="eyebrow">{t("settings.voice.eyebrow")}</p>
+          <h2>{t("settings.voice.title.full")}</h2>
         </div>
         <div className="actions">
-          {hasChanges ? <span className="status warn">Cambios sin guardar</span> : null}
+          {hasChanges ? <span className="status warn">{t("settings.tenant.dirty")}</span> : null}
           <button className="button" disabled={!hasChanges || submitting} onClick={handleSave}>
             <KeyRound aria-hidden="true" />
-            <span>{submitting ? "Guardando…" : "Guardar"}</span>
+            <span>{submitting ? t("settings.voice.submitting") : t("settings.voice.submit")}</span>
           </button>
         </div>
       </div>
 
-      <p className="subtle" style={{ marginBottom: 16 }}>
-        Las claves se envían al voice-agent solo durante la creación de cada sesión y no se reflejan en el HTML.
-        Si dejas un campo vacío, el voice-agent usa el valor por defecto del entorno. Lo que ves abajo es la
-        clave enmascarada — reescribe encima para rotarla.
-      </p>
+      <p className="subtle" style={{ marginBottom: 16 }}>{t("settings.voice.hint")}</p>
 
       <div className="grid two">
         <ProviderBlock
           title="OpenAI Realtime"
           providerId="openai_realtime"
           tenant={tenant}
-          subtitle="ASR + LLM + TTS end-to-end. Recomendado para latencia mínima."
+          subtitle="ASR + LLM + TTS end-to-end. Minimum latency."
           c={c}
           draft={draft}
           fields={[
             { key: "openaiApiKey", label: "API key", type: "password", placeholder: "sk-..." },
-            { key: "openaiRealtimeModel", label: "Modelo", placeholder: "gpt-4o-realtime-preview-2024-12-17" },
-            { key: "openaiRealtimeVoice", label: "Voz", placeholder: "alloy" },
+            { key: "openaiRealtimeModel", label: "Model", placeholder: "gpt-4o-realtime-preview-2024-12-17" },
+            { key: "openaiRealtimeVoice", label: "Voice", placeholder: "alloy" },
           ]}
           setField={setField}
         />
@@ -613,16 +601,16 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
           title="Deepgram Voice Agent"
           providerId="deepgram"
           tenant={tenant}
-          subtitle="wss://agent.deepgram.com — listen + think + speak en un único socket."
+          subtitle="wss://agent.deepgram.com — listen + think + speak in a single socket."
           c={c}
           draft={draft}
           fields={[
             { key: "deepgramApiKey", label: "API key Deepgram", type: "password", placeholder: "..." },
-            { key: "deepgramListenModel", label: "Modelo Listen (ASR)", placeholder: "nova-3" },
-            { key: "deepgramThinkProvider", label: "Provider LLM", placeholder: "open_ai · anthropic · ..." },
-            { key: "deepgramThinkModel", label: "Modelo LLM", placeholder: "gpt-4o-mini" },
-            { key: "deepgramSpeakModel", label: "Modelo Speak (TTS)", placeholder: "aura-2-thalia-en" },
-            { key: "deepgramGreeting", label: "Saludo inicial (opcional)", placeholder: "Hola, soy el asistente..." },
+            { key: "deepgramListenModel", label: "Listen model (ASR)", placeholder: "nova-3" },
+            { key: "deepgramThinkProvider", label: "LLM provider", placeholder: "open_ai · anthropic · ..." },
+            { key: "deepgramThinkModel", label: "LLM model", placeholder: "gpt-4o-mini" },
+            { key: "deepgramSpeakModel", label: "Speak model (TTS)", placeholder: "aura-2-thalia-en" },
+            { key: "deepgramGreeting", label: "Initial greeting (optional)", placeholder: "Hello, I'm the assistant..." },
           ]}
           setField={setField}
         />
@@ -630,13 +618,13 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
           title="AssemblyAI Voice Agent"
           providerId="assemblyai"
           tenant={tenant}
-          subtitle="wss://agents.assemblyai.com — LLM y TTS hospedados por AssemblyAI."
+          subtitle="wss://agents.assemblyai.com — LLM and TTS hosted by AssemblyAI."
           c={c}
           draft={draft}
           fields={[
             { key: "assemblyaiApiKey", label: "API key AssemblyAI", type: "password", placeholder: "..." },
-            { key: "assemblyaiVoice", label: "Voz", placeholder: "ivy · james · tyler" },
-            { key: "assemblyaiGreeting", label: "Saludo inicial (opcional)", placeholder: "Hola, soy el asistente..." },
+            { key: "assemblyaiVoice", label: "Voice", placeholder: "ivy · james · tyler" },
+            { key: "assemblyaiGreeting", label: "Initial greeting (optional)", placeholder: "Hello, I'm the assistant..." },
           ]}
           setField={setField}
         />
@@ -664,6 +652,7 @@ function ProviderBlock<K extends keyof VoiceCredentials>({
   fields: { key: K; label: string; type?: string; placeholder?: string }[];
   setField: <KK extends keyof VoiceCredentials>(key: KK, value: VoiceCredentials[KK]) => void;
 }) {
+  const t = useT();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -674,8 +663,8 @@ function ProviderBlock<K extends keyof VoiceCredentials>({
       const r = await api.testVoiceCredentials(providerId, tenant);
       setTestResult(
         r.ok
-          ? { ok: true, msg: "Key válida y servidor accesible." }
-          : { ok: false, msg: r.error ?? "Fallo desconocido." },
+          ? { ok: true, msg: t("settings.voice.test.ok") }
+          : { ok: false, msg: r.error ?? t("settings.voice.test.unknownerr") },
       );
     } catch (err) {
       setTestResult({ ok: false, msg: err instanceof ApiError ? err.code : "error" });
@@ -692,7 +681,7 @@ function ProviderBlock<K extends keyof VoiceCredentials>({
           <p className="subtle" style={{ marginBottom: 12 }}>{subtitle}</p>
         </div>
         <button type="button" className="button ghost compact" onClick={handleTest} disabled={testing}>
-          {testing ? "Probando…" : "Probar conexión"}
+          {testing ? t("settings.voice.testing") : t("settings.voice.test")}
         </button>
       </div>
       {testResult ? (
