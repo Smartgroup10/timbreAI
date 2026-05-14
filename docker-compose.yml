@@ -159,6 +159,10 @@ services:
     environment:
       ASTERISK_ARI_USER: ${ASTERISK_ARI_USER:-timbre}
       ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-change-me}
+      # AudioSocket host:port se interpola en extensions.conf en boot
+      # (ver entrypoint.sh) — el dialplan ejecuta AudioSocket(uuid, host:port).
+      AUDIOSOCKET_HOST: ${AUDIOSOCKET_HOST:-voice-agent}
+      AUDIOSOCKET_PORT: ${AUDIOSOCKET_PORT:-9092}
       # Para que res_config_pgsql.conf.tpl pueda interpolar las credenciales
       # del Postgres compartido (mismo cluster que el backend).
       POSTGRES_DB: ${POSTGRES_DB:-atrium_calls}

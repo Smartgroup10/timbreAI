@@ -132,14 +132,17 @@ func handleStasisStart(
 	var emCh ari.Channel
 	switch bc.Mode {
 	case BridgeModeAudioSocket:
+		// El host:port del voice-agent está hardcodeado en el dialplan de
+		// Asterisk (extensions.conf, ver entrypoint.sh) porque las vars del
+		// Originate NO propagan al lado ;2 del Local channel — quedaban
+		// vacías y AudioSocket() fallaba con "connect to :" matando el pair
+		// antes de poder bridgearlo.
+		_ = bc.AudioSocketHost // referenciamos para que el config siga existiendo
+		_ = bc.AudioSocketPort
 		ch, err := ariClient.Originate(ctx, ari.OriginateRequest{
 			Endpoint: "Local/" + call.VoiceSessionID + "@audiosocket-bridge",
-			App:      "", // se rellena con la app por defecto del cliente ARI
-			Variables: map[string]string{
-				"TIMBRE_AS_HOST": bc.AudioSocketHost,
-				"TIMBRE_AS_PORT": bc.AudioSocketPort,
-			},
-			Timeout: 10,
+			App:      "",
+			Timeout:  10,
 		})
 		if err != nil {
 			logger.Error("audiosocket originate", "session", call.VoiceSessionID, "error", err)

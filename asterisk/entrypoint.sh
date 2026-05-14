@@ -144,7 +144,13 @@ qualify_frequency = 30
 EOF
 
 # ── extensions.conf: dialplan mínimo ────────────────────────────────────
-cat > /etc/asterisk/extensions.conf <<'EOF'
+# OJO: host:port del voice-agent SE INTERPOLAN en build-time (renderizado por
+# el entrypoint con las envs del contenedor) en lugar de pasarse como
+# channel variables del Originate. Razón: las vars que envías por
+# Originate no propagan al lado ";2" del Local channel (el que ejecuta
+# el dialplan) salvo que uses el prefijo "__" — y con eso quedaríamos
+# sobreescribiendo vars en todo canal padre. Más simple: dialplan estático.
+cat > /etc/asterisk/extensions.conf <<EOF
 [general]
 static = yes
 writeprotect = no
@@ -154,20 +160,19 @@ exten => 6001,1,Dial(PJSIP/6001,30,m)
  same => n,Hangup()
 
 [from-trunk]
-exten => _X.,1,NoOp(Inbound desde trunk SIP a ${EXTEN})
- same => n,Stasis(timbre-bot,inbound,${EXTEN})
+exten => _X.,1,NoOp(Inbound desde trunk SIP a \${EXTEN})
+ same => n,Stasis(timbre-bot,inbound,\${EXTEN})
  same => n,Hangup()
 
 ; ── AudioSocket bridge ──────────────────────────────────────────────────
 ; El backend origina Local/<voiceSessionID>@audiosocket-bridge cuando arranca
 ; una llamada. La extensión llama a AudioSocket() pasando el sessionID como
 ; UUID — el voice-agent lo usa para identificar qué Session de su registry
-; debe conectar con esta tubería de audio TCP. Variables host/port vienen
-; del Originate (TIMBRE_AS_HOST / TIMBRE_AS_PORT).
+; debe conectar con esta tubería de audio TCP.
 [audiosocket-bridge]
-exten => _X.,1,NoOp(AudioSocket bridge for session ${EXTEN})
+exten => _X.,1,NoOp(AudioSocket bridge for session \${EXTEN})
  same => n,Answer()
- same => n,AudioSocket(${EXTEN},${TIMBRE_AS_HOST}:${TIMBRE_AS_PORT})
+ same => n,AudioSocket(\${EXTEN},${AUDIOSOCKET_HOST:-voice-agent}:${AUDIOSOCKET_PORT:-9092})
  same => n,Hangup()
 EOF
 
