@@ -170,7 +170,7 @@ exten => _X.,1,NoOp(Inbound desde trunk SIP a \${EXTEN})
 ; UUID — el voice-agent lo usa para identificar qué Session de su registry
 ; debe conectar con esta tubería de audio TCP.
 [audiosocket-bridge]
-exten => _X.,1,NoOp(AudioSocket bridge for session \${EXTEN})
+exten => _.,1,NoOp(AudioSocket bridge for session \${EXTEN})
  same => n,Answer()
  same => n,AudioSocket(\${EXTEN},${AUDIOSOCKET_HOST:-voice-agent}:${AUDIOSOCKET_PORT:-9092})
  same => n,Hangup()

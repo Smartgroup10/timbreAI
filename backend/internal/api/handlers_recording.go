@@ -14,7 +14,7 @@ import (
 // audio of the conversation. The backend stores it in MinIO and writes the public URL back to
 // calls.recording_url.
 //
-// URL: POST /api/internal/voice/recordings?sessionId=<vs_xxx>
+// URL: POST /api/internal/voice/recordings?sessionId=<uuid>
 // Body: audio/wav (binary)
 // Auth: X-Internal-Secret header (same as transcripts webhook).
 func (s *Server) handleInternalRecording(w http.ResponseWriter, r *http.Request) {

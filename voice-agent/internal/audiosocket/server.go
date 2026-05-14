@@ -31,6 +31,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -245,8 +246,8 @@ func (s *Server) writeLoop(ctx context.Context, conn net.Conn, sess *session.Ses
 	}
 }
 
-// readUUIDFrame lee el frame inicial que identifica la sesión. Asterisk envía
-// el UUID como string de 36 chars (con guiones) por defecto.
+// readUUIDFrame lee el frame inicial que identifica la sesion. Asterisk envia
+// el UUID como 16 bytes binarios; aceptamos tambien texto para clientes de test.
 func readUUIDFrame(conn net.Conn) (string, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	defer conn.SetReadDeadline(time.Time{})
@@ -266,7 +267,15 @@ func readUUIDFrame(conn net.Conn) (string, error) {
 	if _, err := io.ReadFull(conn, payload); err != nil {
 		return "", err
 	}
-	return string(payload), nil
+	if len(payload) == 16 {
+		return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+			payload[0:4], payload[4:6], payload[6:8], payload[8:10], payload[10:16]), nil
+	}
+	id := strings.TrimSpace(string(payload))
+	if len(id) == 36 {
+		return strings.ToLower(id), nil
+	}
+	return "", fmt.Errorf("unsupported uuid payload length: %d", len(payload))
 }
 
 func writeAudio(conn net.Conn, pcm []byte) error {
