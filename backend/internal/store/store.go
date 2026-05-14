@@ -371,7 +371,7 @@ func (s *Store) ListCalls(ctx context.Context, tenantID string, limit int) ([]Ca
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
-		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url
+		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url, provider
 		FROM calls
 		WHERE tenant_id = $1
 		ORDER BY COALESCE(started_at, created_at) DESC
@@ -384,7 +384,7 @@ func (s *Store) ListCalls(ctx context.Context, tenantID string, limit int) ([]Ca
 	for rows.Next() {
 		var c Call
 		if err := rows.Scan(&c.ID, &c.TenantID, &c.LeadID, &c.CampaignID, &c.LeadName, &c.Campaign, &c.Phone, &c.Status, &c.Outcome,
-			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL); err != nil {
+			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL, &c.Provider); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -396,10 +396,10 @@ func (s *Store) GetCall(ctx context.Context, tenantID, id string) (Call, error) 
 	var c Call
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
-		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url
+		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url, provider
 		FROM calls WHERE tenant_id = $1 AND id = $2`, tenantID, id).
 		Scan(&c.ID, &c.TenantID, &c.LeadID, &c.CampaignID, &c.LeadName, &c.Campaign, &c.Phone, &c.Status, &c.Outcome,
-			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL)
+			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL, &c.Provider)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -418,10 +418,10 @@ func (s *Store) CreateCall(ctx context.Context, c Call) (Call, error) {
 	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO calls (id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
-		                   duration_sec, channel_id, started_at, summary)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		                   duration_sec, channel_id, started_at, summary, provider)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		c.ID, c.TenantID, c.LeadID, c.CampaignID, c.LeadName, c.Campaign, c.Phone, c.Status, c.Outcome,
-		c.DurationSec, c.ChannelID, c.StartedAt, c.Summary)
+		c.DurationSec, c.ChannelID, c.StartedAt, c.Summary, c.Provider)
 	return c, err
 }
 
@@ -468,10 +468,10 @@ func (s *Store) FindCallByChannel(ctx context.Context, channelID string) (Call, 
 	var c Call
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
-		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url
+		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url, provider
 		FROM calls WHERE channel_id = $1`, channelID).
 		Scan(&c.ID, &c.TenantID, &c.LeadID, &c.CampaignID, &c.LeadName, &c.Campaign, &c.Phone, &c.Status, &c.Outcome,
-			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL)
+			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL, &c.Provider)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -507,7 +507,7 @@ func (s *Store) QueuedCalls(ctx context.Context, limit int) ([]Call, error) {
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
-		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url
+		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url, provider
 		FROM calls WHERE status = 'queued'
 		ORDER BY created_at
 		LIMIT $1`, limit)
@@ -520,7 +520,7 @@ func (s *Store) QueuedCalls(ctx context.Context, limit int) ([]Call, error) {
 		var c Call
 		if err := rows.Scan(&c.ID, &c.TenantID, &c.LeadID, &c.CampaignID, &c.LeadName, &c.Campaign, &c.Phone,
 			&c.Status, &c.Outcome, &c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt,
-			&c.Summary, &c.RecordingURL); err != nil {
+			&c.Summary, &c.RecordingURL, &c.Provider); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

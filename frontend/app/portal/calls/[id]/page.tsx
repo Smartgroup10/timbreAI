@@ -3,7 +3,7 @@
 import { use } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { api, statusClass } from "../../../../lib/api";
+import { api, formatCostCents, statusClass } from "../../../../lib/api";
 import { useTenantScope } from "../../../../lib/auth-context";
 import { useResource } from "../../../../lib/use-resource";
 import { useT, useStatusLabel } from "../../../../lib/i18n";
@@ -70,6 +70,15 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
             <Row label={t("calls.detail.lead")} value={c.leadName || "—"} />
             <Row label={t("calls.detail.campaign")} value={c.campaign || "—"} />
             <Row label={t("calls.detail.duration")} value={formatDuration(c.durationSec)} />
+            <Row
+              label={t("col.cost")}
+              value={
+                <span title={t("cost.hint")}>
+                  {formatCostCents(c.costCents)}
+                  {c.provider ? <span className="subtle"> · {c.provider}</span> : null}
+                </span>
+              }
+            />
             <Row label={t("calls.detail.start")} value={c.startedAt ? new Date(c.startedAt).toLocaleString() : "—"} />
             <Row label={t("calls.detail.end")} value={c.endedAt ? new Date(c.endedAt).toLocaleString() : "—"} />
             <Row label={t("calls.detail.channel")} value={<code className="mono">{c.channelId || "—"}</code>} />

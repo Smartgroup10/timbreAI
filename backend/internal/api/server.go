@@ -7,6 +7,7 @@ import (
 
 	"timbre/backend/internal/ari"
 	"timbre/backend/internal/config"
+	"timbre/backend/internal/pricing"
 	"timbre/backend/internal/storage"
 	"timbre/backend/internal/store"
 	"timbre/backend/internal/voiceagent"
@@ -18,6 +19,7 @@ type Server struct {
 	ari        *ari.Client
 	voiceAgent *voiceagent.Client
 	storage    *storage.Client
+	pricing    *pricing.Table
 	logger     *slog.Logger
 	loginRate  *rateLimiter
 }
@@ -29,10 +31,26 @@ func New(cfg config.Config, st *store.Store, ariClient *ari.Client, va *voiceage
 		ari:        ariClient,
 		voiceAgent: va,
 		storage:    storeClient,
+		pricing:    pricing.NewTable(),
 		logger:     logger,
 		// 1 token per second, burst of 10 => allows brief bursts but blocks brute-force.
 		loginRate: newRateLimiter(time.Second, 10),
 	}
+}
+
+// withCost rellena CostCents y devuelve la lista. Helper para inyectar el
+// coste estimado en cada call al serializar — el campo no se persiste.
+func (s *Server) withCost(calls []store.Call) []store.Call {
+	for i := range calls {
+		calls[i].CostCents = s.pricing.Cost(calls[i].Provider, calls[i].DurationSec)
+	}
+	return calls
+}
+
+// withCostOne idem para un único call.
+func (s *Server) withCostOne(c store.Call) store.Call {
+	c.CostCents = s.pricing.Cost(c.Provider, c.DurationSec)
+	return c
 }
 
 func (s *Server) Handler() http.Handler {
@@ -107,6 +125,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/internal/voice/recordings", s.requireInternalSecret(s.handleInternalRecording))
 
 	mux.HandleFunc("GET /api/analytics", s.requireAuth(s.handleAnalytics))
+	mux.HandleFunc("GET /api/pricing", s.requireAuth(s.handlePricing))
 
 	// Platform-admin only
 	mux.HandleFunc("GET /api/admin/tenants", s.requireRole("platform_admin", s.handleTenants))

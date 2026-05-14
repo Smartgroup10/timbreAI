@@ -5,7 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Minus, Phone, PhoneCall } from "lucide-re
 import { StatCard } from "../../components/stat-card";
 import { TestCallDrawer } from "../../components/test-call-drawer";
 import { DailyBars, HBars } from "../../components/charts";
-import { api, Call, statusClass } from "../../lib/api";
+import { api, Call, formatCostCents, statusClass } from "../../lib/api";
 import { useTenantScope } from "../../lib/auth-context";
 import { useResource } from "../../lib/use-resource";
 import { useT, useStatusLabel } from "../../lib/i18n";
@@ -89,6 +89,18 @@ export default function PortalDashboard() {
           value={overview.data?.activeCampaigns ?? "—"}
           hint={t("portal.stat.queued", { n: overview.data?.queuedCalls ?? 0 })}
           trend={overview.data?.queuedCalls ? t("portal.stat.queued.hasqueue") : ""}
+        />
+        <StatCard
+          label={t("portal.stat.cost")}
+          value={formatCostCents(analytics.data?.totalCostCents)}
+          hint={t("portal.stat.cost.hint")}
+          trend={
+            analytics.data?.costByProvider && analytics.data.costByProvider.length > 0
+              ? analytics.data.costByProvider
+                  .map((c) => `${c.provider}: ${formatCostCents(c.costCents)}`)
+                  .join(" · ")
+              : ""
+          }
         />
       </div>
 

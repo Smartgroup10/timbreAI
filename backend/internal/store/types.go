@@ -127,7 +127,7 @@ type Call struct {
 	Campaign       string     `json:"campaign"`
 	Phone          string     `json:"phone"`
 	Status         string     `json:"status"`
-	Outcome         string     `json:"outcome"`
+	Outcome        string     `json:"outcome"`
 	DurationSec    int        `json:"durationSec"`
 	ChannelID      string     `json:"channelId"`
 	VoiceSessionID string     `json:"voiceSessionId,omitempty"`
@@ -135,6 +135,15 @@ type Call struct {
 	EndedAt        *time.Time `json:"endedAt,omitempty"`
 	Summary        string     `json:"summary"`
 	RecordingURL   string     `json:"recordingUrl,omitempty"`
+	// Provider que atendió la llamada (openai_realtime/deepgram/assemblyai/echo).
+	// Snapshot al crear la llamada — el bot podría cambiar de provider más
+	// tarde y haríamos un cálculo de coste inconsistente.
+	Provider string `json:"provider,omitempty"`
+	// CostCents es coste estimado en céntimos. NO se persiste; lo calcula
+	// el handler al serializar a partir de provider × duration y la tabla
+	// de tarifas activa. Si cambias tarifas las llamadas viejas reflejan
+	// el nuevo precio (estimación, no facturación).
+	CostCents int `json:"costCents"`
 }
 
 type Overview struct {

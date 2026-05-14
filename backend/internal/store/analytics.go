@@ -8,15 +8,26 @@ import (
 // Analytics is the per-tenant snapshot returned by the analytics endpoint. Time series are
 // always 7 daily buckets ending today; counts are aligned in the tenant's timezone.
 type Analytics struct {
-	Generated   time.Time          `json:"generatedAt"`
-	Timezone    string             `json:"timezone"`
-	Last7Days   []DailyCount       `json:"last7Days"`
-	Outcomes    []CountByLabel     `json:"outcomes"`
-	Statuses    []CountByLabel     `json:"statuses"`
-	TopBots     []CountByLabel     `json:"topBots"`
-	TopCampaigns []CountByLabel    `json:"topCampaigns"`
-	TotalsLast7 int                `json:"totalsLast7"`
-	TotalsPrev7 int                `json:"totalsPrev7"`
+	Generated    time.Time      `json:"generatedAt"`
+	Timezone     string         `json:"timezone"`
+	Last7Days    []DailyCount   `json:"last7Days"`
+	Outcomes     []CountByLabel `json:"outcomes"`
+	Statuses     []CountByLabel `json:"statuses"`
+	TopBots      []CountByLabel `json:"topBots"`
+	TopCampaigns []CountByLabel `json:"topCampaigns"`
+	TotalsLast7  int            `json:"totalsLast7"`
+	TotalsPrev7  int            `json:"totalsPrev7"`
+	// Segundos totales por provider (últimos 30 días). El handler de la API
+	// los multiplica por la tarifa para devolver CostByProvider/totalCost.
+	// Los exponemos crudos para que UIs avanzadas puedan recalcular si
+	// el operador ajusta las tarifas en el frontend.
+	ProviderSeconds []ProviderSecondsBucket `json:"providerSeconds"`
+}
+
+// ProviderSecondsBucket es segundos agregados por provider (últimos 30 días).
+type ProviderSecondsBucket struct {
+	Provider string `json:"provider"`
+	Seconds  int    `json:"seconds"`
 }
 
 type DailyCount struct {
@@ -111,7 +122,27 @@ func (s *Store) BuildAnalytics(ctx context.Context, tenantID, timezone string) (
 		GROUP BY campaign_name ORDER BY count(*) DESC LIMIT 5`, tenantID); err != nil {
 		return out, err
 	}
-	return out, nil
+
+	// Segundos por provider (últimos 30 días) para que el handler calcule
+	// el coste estimado total y el desglose por proveedor.
+	rows30, err := s.pool.Query(ctx, `
+		SELECT provider, COALESCE(SUM(duration_sec), 0)
+		FROM calls
+		WHERE tenant_id = $1 AND COALESCE(started_at, created_at) >= now() - interval '30 days'
+		  AND provider <> ''
+		GROUP BY provider`, tenantID)
+	if err != nil {
+		return out, err
+	}
+	defer rows30.Close()
+	for rows30.Next() {
+		var p ProviderSecondsBucket
+		if err := rows30.Scan(&p.Provider, &p.Seconds); err != nil {
+			return out, err
+		}
+		out.ProviderSeconds = append(out.ProviderSeconds, p)
+	}
+	return out, rows30.Err()
 }
 
 func (s *Store) bucket(ctx context.Context, query, tenantID string) ([]CountByLabel, error) {

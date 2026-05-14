@@ -121,6 +121,7 @@ type DispatchableCampaignLead struct {
 	LeadPhone      string
 	CampaignName   string
 	BotID          string
+	BotProvider    string // snapshot voice_provider del bot, para coste
 	MaxConcurrent  int
 }
 
@@ -140,10 +141,11 @@ func (s *Store) NextDispatchableForCampaign(ctx context.Context, limit int) ([]D
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT cl.id, cl.campaign_id, cl.tenant_id, cl.lead_id, l.name, l.phone, c.name,
-		       COALESCE(c.bot_id, ''), c.max_concurrent
+		       COALESCE(c.bot_id, ''), COALESCE(b.voice_provider, ''), c.max_concurrent
 		FROM campaign_leads cl
 		JOIN campaigns c ON c.id = cl.campaign_id
 		JOIN leads l ON l.id = cl.lead_id
+		LEFT JOIN bots b ON b.id = c.bot_id
 		WHERE c.status = 'active'
 		  AND (c.start_at IS NULL OR c.start_at <= now())
 		  AND (c.end_at   IS NULL OR c.end_at   >= now())
@@ -162,7 +164,7 @@ func (s *Store) NextDispatchableForCampaign(ctx context.Context, limit int) ([]D
 	for rows.Next() {
 		var d DispatchableCampaignLead
 		if err := rows.Scan(&d.CampaignLeadID, &d.CampaignID, &d.TenantID, &d.LeadID,
-			&d.LeadName, &d.LeadPhone, &d.CampaignName, &d.BotID, &d.MaxConcurrent); err != nil {
+			&d.LeadName, &d.LeadPhone, &d.CampaignName, &d.BotID, &d.BotProvider, &d.MaxConcurrent); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -186,6 +188,10 @@ func (s *Store) MarkCampaignLeadDispatched(ctx context.Context, cl DispatchableC
 		return Call{}, err
 	}
 
+	provider := cl.BotProvider
+	if provider == "" {
+		provider = "echo" // sin bot asignado a la campaña, sandbox
+	}
 	call := Call{
 		ID:         newID("call"),
 		TenantID:   cl.TenantID,
@@ -197,11 +203,12 @@ func (s *Store) MarkCampaignLeadDispatched(ctx context.Context, cl DispatchableC
 		Status:     "queued",
 		Outcome:    "pending",
 		Summary:    "Dispatched by campaign expander.",
+		Provider:   provider,
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO calls (id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome, summary)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		call.ID, call.TenantID, call.LeadID, call.CampaignID, call.LeadName, call.Campaign, call.Phone, call.Status, call.Outcome, call.Summary,
+		INSERT INTO calls (id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome, summary, provider)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		call.ID, call.TenantID, call.LeadID, call.CampaignID, call.LeadName, call.Campaign, call.Phone, call.Status, call.Outcome, call.Summary, call.Provider,
 	); err != nil {
 		return Call{}, err
 	}

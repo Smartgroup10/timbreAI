@@ -125,10 +125,10 @@ func (s *Store) FindCallByVoiceSession(ctx context.Context, sessionID string) (C
 	var c Call
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
-		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url
+		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url, provider
 		FROM calls WHERE voice_session_id = $1`, sessionID).
 		Scan(&c.ID, &c.TenantID, &c.LeadID, &c.CampaignID, &c.LeadName, &c.Campaign, &c.Phone, &c.Status, &c.Outcome,
-			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL)
+			&c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt, &c.Summary, &c.RecordingURL, &c.Provider)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}

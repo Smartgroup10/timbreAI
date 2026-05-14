@@ -6,7 +6,7 @@ import { PhoneCall } from "lucide-react";
 import { EmptyState } from "../../../components/empty";
 import { TableSkeleton } from "../../../components/skeleton";
 import { TestCallDrawer } from "../../../components/test-call-drawer";
-import { api, statusClass } from "../../../lib/api";
+import { api, formatCostCents, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 import { useT, useStatusLabel } from "../../../lib/i18n";
@@ -99,6 +99,7 @@ export default function CallsPage() {
                 <th>{t("col.status")}</th>
                 <th>{t("col.outcome")}</th>
                 <th>{t("col.duration")}</th>
+                <th>{t("col.cost")}</th>
                 <th>{t("col.channel")}</th>
                 <th>{t("col.summary")}</th>
               </tr>
@@ -120,6 +121,9 @@ export default function CallsPage() {
                     <span className="chip">{statusLabel(call.outcome)}</span>
                   </td>
                   <td>{formatDuration(call.durationSec)}</td>
+                  <td title={call.provider ? `${call.provider}` : undefined}>
+                    {formatCostCents(call.costCents)}
+                  </td>
                   <td>
                     <code className="mono">{call.channelId || "—"}</code>
                   </td>

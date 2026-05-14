@@ -192,6 +192,14 @@ export type Analytics = {
   topCampaigns: { label: string; count: number }[];
   totalsLast7: number;
   totalsPrev7: number;
+  providerSeconds: { provider: string; seconds: number }[];
+  costByProvider: {
+    provider: string;
+    seconds: number;
+    centsPerMin: number;
+    costCents: number;
+  }[];
+  totalCostCents: number;
 };
 
 export type Call = {
@@ -211,6 +219,16 @@ export type Call = {
   endedAt?: string | null;
   summary: string;
   recordingUrl?: string;
+  provider?: string;
+  /** Coste estimado en céntimos USD. Calculado server-side a partir
+   *  de provider × duración × tarifa. No se persiste — si cambias
+   *  tarifas las llamadas viejas reflejan el nuevo precio. */
+  costCents?: number;
+};
+
+export type PricingTable = {
+  /** Mapa providerId → céntimos por minuto. Ej. { openai_realtime: 30, deepgram: 8 } */
+  centsPerMin: Record<string, number>;
 };
 
 export type LoginResponse = {
@@ -320,6 +338,7 @@ export const api = {
     request<Call[]>("GET", withTenant(`/api/leads/${encodeURIComponent(id)}/calls`, tenantOverride)),
   analytics: (tenantOverride?: string) =>
     request<Analytics>("GET", withTenant("/api/analytics", tenantOverride)),
+  pricing: () => request<PricingTable>("GET", "/api/pricing"),
   createLead: (input: Partial<Lead>, tenantOverride?: string) =>
     request<Lead>("POST", withTenant("/api/leads", tenantOverride), input),
   importLeads: (csv: string, tenantOverride?: string) =>
@@ -455,6 +474,17 @@ function withTenant(path: string, tenant?: string): string {
   if (!tenant) return path;
   const sep = path.includes("?") ? "&" : "?";
   return `${path}${sep}tenant=${encodeURIComponent(tenant)}`;
+}
+
+// formatCostCents convierte céntimos (entero) a una string legible en USD.
+// Ej. 15 → "$0.15", 1234 → "$12.34", 0 → "—". Centramos USD porque las
+// tarifas de los providers (OpenAI/Deepgram/AssemblyAI) están en USD; si
+// queremos mostrar EUR habría que multiplicar por un tipo de cambio fijo
+// o variable. Para "estimate" en el dashboard sobra con USD.
+export function formatCostCents(cents: number | undefined): string {
+  if (cents === undefined || cents === null) return "—";
+  if (cents === 0) return "—";
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 export function statusClass(status: string) {

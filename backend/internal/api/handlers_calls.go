@@ -41,7 +41,7 @@ func (s *Server) handleLeadCalls(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, calls)
+	writeJSON(w, http.StatusOK, s.withCost(calls))
 }
 
 func (s *Server) handleGetCall(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +60,7 @@ func (s *Server) handleGetCall(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "lookup_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, call)
+	writeJSON(w, http.StatusOK, s.withCostOne(call))
 }
 
 func (s *Server) handleCallTranscripts(w http.ResponseWriter, r *http.Request) {

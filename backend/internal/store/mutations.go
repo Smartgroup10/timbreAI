@@ -73,7 +73,7 @@ func (s *Store) GetLead(ctx context.Context, tenantID, id string) (Lead, error) 
 func (s *Store) ListCallsForLead(ctx context.Context, tenantID, leadID string) ([]Call, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, tenant_id, lead_id, campaign_id, lead_name, campaign_name, phone, status, outcome,
-		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url
+		       duration_sec, channel_id, voice_session_id, started_at, ended_at, summary, recording_url, provider
 		FROM calls WHERE tenant_id = $1 AND lead_id = $2
 		ORDER BY COALESCE(started_at, created_at) DESC
 		LIMIT 100`, tenantID, leadID)
@@ -86,7 +86,7 @@ func (s *Store) ListCallsForLead(ctx context.Context, tenantID, leadID string) (
 		var c Call
 		if err := rows.Scan(&c.ID, &c.TenantID, &c.LeadID, &c.CampaignID, &c.LeadName, &c.Campaign, &c.Phone,
 			&c.Status, &c.Outcome, &c.DurationSec, &c.ChannelID, &c.VoiceSessionID, &c.StartedAt, &c.EndedAt,
-			&c.Summary, &c.RecordingURL); err != nil {
+			&c.Summary, &c.RecordingURL, &c.Provider); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

@@ -812,6 +812,14 @@ const ES: Dict = {
   "col.dids": "DIDs",
   "col.appstate": "Estado app",
   "col.sipstate": "Estado SIP",
+  "col.cost": "Coste",
+  "cost.estimate": "Coste estimado",
+  "cost.total30": "Gasto 30 días",
+  "cost.empty": "—",
+  "cost.rate": "{provider} · {cents}¢/min",
+  "cost.hint": "Estimado a partir de duración × tarifa del provider. No es facturación real — sirve para comparar campañas.",
+  "portal.stat.cost": "Coste 30 días",
+  "portal.stat.cost.hint": "Estimado — duración × tarifa por provider",
 
   // status labels
   "status.active": "Activa",
@@ -1697,6 +1705,14 @@ const EN: Dict = {
   "col.dids": "DIDs",
   "col.appstate": "App state",
   "col.sipstate": "SIP state",
+  "col.cost": "Cost",
+  "cost.estimate": "Estimated cost",
+  "cost.total30": "30-day spend",
+  "cost.empty": "—",
+  "cost.rate": "{provider} · {cents}¢/min",
+  "cost.hint": "Estimated from duration × provider rate. Not actual billing — useful to compare campaigns.",
+  "portal.stat.cost": "30-day cost",
+  "portal.stat.cost.hint": "Estimated — duration × provider rate",
 
   // status labels
   "status.active": "Active",

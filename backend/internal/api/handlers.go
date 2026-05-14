@@ -227,7 +227,7 @@ func (s *Server) handleCalls(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, calls)
+	writeJSON(w, http.StatusOK, s.withCost(calls))
 }
 
 // --- Test call (ARI originate) ---
@@ -254,6 +254,10 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 	// tenant scope del JWT/query — sin bot el test call sale por el sandbox
 	// interno y necesita un tenant explícito para registrar la llamada.
 	var tenantID string
+	// Provider snapshot: sin bot el sandbox usa echo (sin coste), con bot
+	// usamos su voiceProvider — guardamos en la call para que el coste
+	// estimado sea estable si el bot cambia de provider más adelante.
+	provider := "echo"
 	if req.BotID != "" {
 		b, err := s.store.GetBotByID(r.Context(), req.BotID)
 		if err != nil {
@@ -266,6 +270,9 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		tenantID = b.TenantID
+		if b.VoiceProvider != "" {
+			provider = b.VoiceProvider
+		}
 		// Si el caller tiene tenant en el JWT, debe coincidir con el del bot
 		// (un tenant_admin no puede lanzar test call contra un bot ajeno).
 		if claims, ok := auth.FromContext(r.Context()); ok && claims.TenantID != "" && claims.TenantID != tenantID {
@@ -301,6 +308,7 @@ func (s *Server) handleTestCall(w http.ResponseWriter, r *http.Request) {
 		Status:   "queued",
 		Outcome:  "pending",
 		Summary:  "Manual test call originated from portal (" + routeNote + ").",
+		Provider: provider,
 	})
 	if err != nil {
 		s.logger.Error("create test call", "error", err)
