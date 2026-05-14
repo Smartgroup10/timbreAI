@@ -90,9 +90,12 @@ func handleStasisStart(
 	if chID == "" {
 		return
 	}
-	// Skip ExternalMedia channels — they fire their own StasisStart we don't act on.
-	if isExternalMediaChannel(ev) {
-		logger.Info("stasis start external media", "channel", chID)
+	// Skip our own side-car channels (ExternalMedia UnicastRTP/ o Local/ del
+	// AudioSocket bridge) — disparan StasisStart al ser añadidos al bridge,
+	// pero no son llamadas reales y hay que dejarlos vivos. Si los hangup-amos
+	// aquí matamos el puente de audio.
+	if isSideCarChannel(ev) {
+		logger.Info("stasis start side-car", "channel", chID, "name", ev.Channel.Name)
 		return
 	}
 
@@ -234,11 +237,20 @@ func handleChannelDestroyed(ctx context.Context, ev ari.Event, st *store.Store, 
 	logger.Info("channel destroyed", "channel", id, "cause", cause, "duration_sec", dur)
 }
 
-func isExternalMediaChannel(ev ari.Event) bool {
+// isSideCarChannel detecta canales que NOSOTROS creamos como puente al
+// voice-agent — no son llamadas reales del caller, así que el handler de
+// StasisStart debe ignorarlos (si los hangup-eamos por error matamos el
+// side-car y la llamada se cae).
+//
+// Dos tipos:
+//   - "UnicastRTP/..." → ExternalMedia (path legacy RTP)
+//   - "Local/..."     → AudioSocket (path actual)
+func isSideCarChannel(ev ari.Event) bool {
 	if ev.Channel == nil {
 		return false
 	}
-	return strings.HasPrefix(ev.Channel.Name, "UnicastRTP/")
+	n := ev.Channel.Name
+	return strings.HasPrefix(n, "UnicastRTP/") || strings.HasPrefix(n, "Local/")
 }
 
 func channelID(ev ari.Event) string {
