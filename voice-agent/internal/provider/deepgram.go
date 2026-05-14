@@ -34,7 +34,10 @@ func NewDeepgram(cfg config.DeepgramConfig, logger *slog.Logger) *Deepgram {
 
 func (d *Deepgram) Name() string { return "deepgram" }
 
-const deepgramSampleRate = 16000
+// Sample rate del audio que mandamos a Deepgram. AudioSocket usa slin nativo
+// a 8 kHz (mismo que el codec del trunk SIP), así que evitamos cualquier
+// resampling. Si vuelves a External Media + slin16 cambia a 16000.
+const deepgramSampleRate = 8000
 
 func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 	apiKey := pick(s.Config.Credentials.DeepgramAPIKey, d.cfg.APIKey)

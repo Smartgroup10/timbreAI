@@ -100,7 +100,16 @@ func main() {
 	// ARI event loop. El handler libera slots del worker cuando un canal se
 	// destruye (caller cuelga, fail, timeout, etc.).
 	if ariClient != nil {
-		handler := app.MakeARIHandler(st, ariClient, voiceClient, cfg.ExternalMedia.Format, w.ReleaseSlot, logger)
+		bridgeMode := app.BridgeModeExternalMedia
+		if cfg.AudioSocket.Enabled {
+			bridgeMode = app.BridgeModeAudioSocket
+		}
+		handler := app.MakeARIHandler(st, ariClient, voiceClient, app.BridgeConfig{
+			Mode:                bridgeMode,
+			ExternalMediaFormat: cfg.ExternalMedia.Format,
+			AudioSocketHost:     cfg.AudioSocket.Host,
+			AudioSocketPort:     cfg.AudioSocket.Port,
+		}, w.ReleaseSlot, logger)
 		go func() {
 			if err := ariClient.RunEventLoop(rootCtx, handler); err != nil && !errors.Is(err, context.Canceled) {
 				logger.Error("ari loop stopped", "error", err)

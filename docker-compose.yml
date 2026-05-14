@@ -62,6 +62,10 @@ services:
       # ulaw (default) evita transcoding en el bridge — trunk SIP usa ulaw/alaw
       # nativamente. slin16 daba problemas de "no oigo audio" en algunas builds.
       EXTERNAL_MEDIA_FORMAT: ${EXTERNAL_MEDIA_FORMAT:-ulaw}
+      # AudioSocket reemplaza External Media. Si lo desactivas, vuelve a RTP/UDP.
+      AUDIOSOCKET_ENABLED: ${AUDIOSOCKET_ENABLED:-true}
+      AUDIOSOCKET_HOST: ${AUDIOSOCKET_HOST:-voice-agent}
+      AUDIOSOCKET_PORT: ${AUDIOSOCKET_PORT:-9092}
       JWT_SECRET: ${JWT_SECRET}
       JWT_TTL: ${JWT_TTL:-12h}
       SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY}
@@ -108,10 +112,14 @@ services:
       RTP_ADVERTISE_HOST: ${RTP_ADVERTISE_HOST:-voice-agent}
       # DEBE coincidir con la env del backend del mismo nombre.
       EXTERNAL_MEDIA_FORMAT: ${EXTERNAL_MEDIA_FORMAT:-ulaw}
+      # AudioSocket TCP server — Asterisk se conecta aquí cuando AUDIOSOCKET_ENABLED=true.
+      AUDIOSOCKET_ENABLED: ${AUDIOSOCKET_ENABLED:-true}
+      AUDIOSOCKET_PORT: ${AUDIOSOCKET_PORT:-9092}
       # API keys (OpenAI / Deepgram / AssemblyAI) viven en Postgres
       # (tabla tenant_voice_credentials), configurables desde /portal/settings.
     expose:
       - "8090"
+      - "9092"
     ports:
       # RTP es UDP y Coolify/Traefik no lo proxean. Necesita binding directo al host.
       - "${RTP_PORT_START:-12000}-${RTP_PORT_END:-12099}:12000-12099/udp"

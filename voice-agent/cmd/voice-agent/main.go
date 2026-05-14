@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"timbre/voice-agent/internal/api"
+	"timbre/voice-agent/internal/audiosocket"
 	"timbre/voice-agent/internal/config"
 	"timbre/voice-agent/internal/provider"
 	"timbre/voice-agent/internal/rtp"
@@ -50,6 +51,20 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	// AudioSocket TCP server: Asterisk se conecta aquí por sesión y nos manda
+	// audio slin 8 kHz directo, sin RTP ni transcoding.
+	if cfg.AudioSocket.Enabled {
+		asAddr := "0.0.0.0:" + cfg.AudioSocket.Port
+		asSrv := audiosocket.New(asAddr, registry, logger)
+		go func() {
+			if err := asSrv.Run(ctx); err != nil {
+				logger.Error("audiosocket server stopped", "error", err)
+			}
+		}()
+	} else {
+		logger.Info("audiosocket disabled; legacy RTP/External Media path active")
+	}
 
 	<-ctx.Done()
 	logger.Info("shutdown signal received")

@@ -157,6 +157,18 @@ exten => 6001,1,Dial(PJSIP/6001,30,m)
 exten => _X.,1,NoOp(Inbound desde trunk SIP a ${EXTEN})
  same => n,Stasis(timbre-bot,inbound,${EXTEN})
  same => n,Hangup()
+
+; ── AudioSocket bridge ──────────────────────────────────────────────────
+; El backend origina Local/<voiceSessionID>@audiosocket-bridge cuando arranca
+; una llamada. La extensión llama a AudioSocket() pasando el sessionID como
+; UUID — el voice-agent lo usa para identificar qué Session de su registry
+; debe conectar con esta tubería de audio TCP. Variables host/port vienen
+; del Originate (TIMBRE_AS_HOST / TIMBRE_AS_PORT).
+[audiosocket-bridge]
+exten => _X.,1,NoOp(AudioSocket bridge for session ${EXTEN})
+ same => n,Answer()
+ same => n,AudioSocket(${EXTEN},${TIMBRE_AS_HOST}:${TIMBRE_AS_PORT})
+ same => n,Hangup()
 EOF
 
 # ── rtp.conf ────────────────────────────────────────────────────────────

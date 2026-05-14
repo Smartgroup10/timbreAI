@@ -26,24 +26,49 @@ import (
 // de la dependencia entera para no acoplar app→worker.
 type releaseSlotFn func(callID string)
 
+// AudioBridgeMode decide qué mecanismo usa Asterisk para puentear el audio:
+//   - "audiosocket": dialplan AudioSocket() sobre TCP (recomendado, sin
+//     transcoding en el bridge).
+//   - "externalmedia": ARI ExternalMedia sobre RTP/UDP (legacy).
+type AudioBridgeMode string
+
+const (
+	BridgeModeAudioSocket   AudioBridgeMode = "audiosocket"
+	BridgeModeExternalMedia AudioBridgeMode = "externalmedia"
+)
+
+// BridgeConfig agrupa los parámetros que el handler necesita para crear el
+// canal puente con el voice-agent.
+type BridgeConfig struct {
+	Mode AudioBridgeMode
+	// ExternalMedia path
+	ExternalMediaFormat string
+	// AudioSocket path
+	AudioSocketHost string
+	AudioSocketPort string
+}
+
 func MakeARIHandler(
 	st *store.Store,
 	ariClient *ari.Client,
 	va *voiceagent.Client,
-	externalMediaFormat string,
+	bc BridgeConfig,
 	releaseSlot releaseSlotFn,
 	logger *slog.Logger,
 ) ari.EventHandler {
 	if releaseSlot == nil {
 		releaseSlot = func(string) {}
 	}
-	if externalMediaFormat == "" {
-		externalMediaFormat = "ulaw"
+	if bc.Mode == "" {
+		bc.Mode = BridgeModeAudioSocket
+	}
+	if bc.ExternalMediaFormat == "" {
+		bc.ExternalMediaFormat = "ulaw"
 	}
 	return func(ctx context.Context, ev ari.Event) {
 		switch ev.Type {
 		case "StasisStart":
-			handleStasisStart(ctx, ev, st, ariClient, va, externalMediaFormat, logger)
+			handleStasisStart(ctx, ev, st, ariClient, va, bc, logger)
 		case "ChannelDestroyed":
 			handleChannelDestroyed(ctx, ev, st, releaseSlot, logger)
 		case "ChannelStateChange":
@@ -58,7 +83,7 @@ func handleStasisStart(
 	st *store.Store,
 	ariClient *ari.Client,
 	va *voiceagent.Client,
-	externalMediaFormat string,
+	bc BridgeConfig,
 	logger *slog.Logger,
 ) {
 	chID := channelID(ev)
@@ -98,33 +123,53 @@ func handleStasisStart(
 		return
 	}
 
-	// 1) Ask voice-agent for an RTP transport.
-	rtp, err := va.AllocateRTP(ctx, call.VoiceSessionID)
-	if err != nil {
-		logger.Error("allocate rtp", "session", call.VoiceSessionID, "error", err)
-		_ = ariClient.HangupChannel(ctx, chID)
-		return
-	}
-	logger.Info("rtp allocated", "session", call.VoiceSessionID, "host", rtp.Host, "port", rtp.Port)
-
-	// 2) Open the External Media channel on Asterisk.
-	// El format debe coincidir con el del voice-agent (EXTERNAL_MEDIA_FORMAT
-	// en ambos servicios). ulaw evita transcoding en el bridge porque el
-	// trunk del cliente suele usar ulaw/alaw 8kHz nativamente — slin16
-	// requería resampling 16→8 kHz que en algunas builds de Asterisk
-	// fallaba silenciosamente y el caller no oía nada.
-	emCh, err := ariClient.CreateExternalMedia(ctx, ari.ExternalMediaRequest{
-		ExternalHost:   rtp.Host + ":" + itoa(rtp.Port),
-		Format:         externalMediaFormat,
-		Encapsulation:  "rtp",
-		Transport:      "udp",
-		ConnectionType: "client",
-		Direction:      "both",
-	})
-	if err != nil {
-		logger.Error("create external media", "error", err)
-		_ = ariClient.HangupChannel(ctx, chID)
-		return
+	// 1+2) Crear el canal "side car" que reproducirá nuestro audio. Dos modos:
+	//   - audiosocket: originar Local/<sessionID>@audiosocket-bridge. El
+	//     dialplan ejecuta AudioSocket(${EXTEN}, host:port) y abre TCP al
+	//     voice-agent. Cero transcoding.
+	//   - externalmedia: ARI ExternalMedia (legacy, RTP/UDP). Lo dejamos por
+	//     compat pero el path por defecto es audiosocket.
+	var emCh ari.Channel
+	switch bc.Mode {
+	case BridgeModeAudioSocket:
+		ch, err := ariClient.Originate(ctx, ari.OriginateRequest{
+			Endpoint: "Local/" + call.VoiceSessionID + "@audiosocket-bridge",
+			App:      "", // se rellena con la app por defecto del cliente ARI
+			Variables: map[string]string{
+				"TIMBRE_AS_HOST": bc.AudioSocketHost,
+				"TIMBRE_AS_PORT": bc.AudioSocketPort,
+			},
+			Timeout: 10,
+		})
+		if err != nil {
+			logger.Error("audiosocket originate", "session", call.VoiceSessionID, "error", err)
+			_ = ariClient.HangupChannel(ctx, chID)
+			return
+		}
+		emCh = ch
+		logger.Info("audiosocket leg created", "session", call.VoiceSessionID, "channel", ch.ID)
+	default:
+		rtp, err := va.AllocateRTP(ctx, call.VoiceSessionID)
+		if err != nil {
+			logger.Error("allocate rtp", "session", call.VoiceSessionID, "error", err)
+			_ = ariClient.HangupChannel(ctx, chID)
+			return
+		}
+		logger.Info("rtp allocated", "session", call.VoiceSessionID, "host", rtp.Host, "port", rtp.Port)
+		ch, err := ariClient.CreateExternalMedia(ctx, ari.ExternalMediaRequest{
+			ExternalHost:   rtp.Host + ":" + itoa(rtp.Port),
+			Format:         bc.ExternalMediaFormat,
+			Encapsulation:  "rtp",
+			Transport:      "udp",
+			ConnectionType: "client",
+			Direction:      "both",
+		})
+		if err != nil {
+			logger.Error("create external media", "error", err)
+			_ = ariClient.HangupChannel(ctx, chID)
+			return
+		}
+		emCh = ch
 	}
 
 	// 3) Bridge inbound + ExternalMedia together.

@@ -14,10 +14,19 @@ type Config struct {
 	AllowedOrigins  []string
 	SessionTTL      time.Duration
 
-	RTP        RTPConfig
-	OpenAI     OpenAIConfig
-	Deepgram   DeepgramConfig
-	AssemblyAI AssemblyAIConfig
+	RTP         RTPConfig
+	AudioSocket AudioSocketConfig
+	OpenAI      OpenAIConfig
+	Deepgram    DeepgramConfig
+	AssemblyAI  AssemblyAIConfig
+}
+
+// AudioSocketConfig describe el servidor TCP que recibe audio slin de Asterisk
+// vía res_audiosocket. Reemplaza el path RTP+External Media para evitar el
+// transcoding del bridge.
+type AudioSocketConfig struct {
+	Enabled bool
+	Port    string // string para que coincida con el resto del config (no int)
 }
 
 type RTPConfig struct {
@@ -67,6 +76,10 @@ func Load() (Config, error) {
 			AdvertiseHost: env("RTP_ADVERTISE_HOST", "voice-agent"),
 			Format:        env("EXTERNAL_MEDIA_FORMAT", "ulaw"),
 		},
+		AudioSocket: AudioSocketConfig{
+			Enabled: envBool("AUDIOSOCKET_ENABLED", true),
+			Port:    env("AUDIOSOCKET_PORT", "9092"),
+		},
 
 		OpenAI: OpenAIConfig{
 			APIKey: openaiKey,
@@ -101,6 +114,17 @@ func env(key, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func envBool(key string, fallback bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	return fallback
 }
 
 func envInt(key string, fallback int) int {

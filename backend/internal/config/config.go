@@ -23,6 +23,7 @@ type Config struct {
 	ARI           ARIConfig
 	SIP           SIPConfig
 	ExternalMedia ExternalMediaConfig
+	AudioSocket   AudioSocketConfig
 	VoiceAgent    VoiceAgentConfig
 	Storage       StorageConfig
 }
@@ -71,6 +72,15 @@ type ExternalMediaConfig struct {
 	Format string
 }
 
+// AudioSocketConfig describe cómo se conecta Asterisk a nuestro servidor
+// AudioSocket. Reemplaza External Media + RTP (que en algunas builds de
+// Asterisk no transcodifica correctamente al codec del trunk).
+type AudioSocketConfig struct {
+	Enabled bool   // si false, se usa External Media (path legacy)
+	Host    string // hostname dentro de la red docker, e.g. "voice-agent"
+	Port    string // TCP port donde escucha el voice-agent, default "9092"
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		Port:          env("PORT", "8080"),
@@ -106,6 +116,11 @@ func Load() (Config, error) {
 		},
 		ExternalMedia: ExternalMediaConfig{
 			Format: env("EXTERNAL_MEDIA_FORMAT", "ulaw"),
+		},
+		AudioSocket: AudioSocketConfig{
+			Enabled: envBool("AUDIOSOCKET_ENABLED", true),
+			Host:    env("AUDIOSOCKET_HOST", "voice-agent"),
+			Port:    env("AUDIOSOCKET_PORT", "9092"),
 		},
 		VoiceAgent: VoiceAgentConfig{
 			URL:    env("VOICE_AGENT_URL", ""),
