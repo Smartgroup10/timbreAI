@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Pause, Play, Trash2, Users } from "lucide-react";
 import { useToast } from "../../../components/toast";
-import { api, ApiError, Bot, Campaign, CampaignLead, Lead, statusClass } from "../../../lib/api";
+import { api, ApiError, Bot, Call, Campaign, CampaignLead, Lead, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
 
@@ -305,6 +305,8 @@ function CampaignForm({ bots, onSubmit }: { bots: Bot[]; onSubmit: (input: Parti
   );
 }
 
+type DrawerTab = "leads" | "add" | "calls";
+
 function CampaignLeadsDrawer({
   campaign,
   tenant,
@@ -316,8 +318,10 @@ function CampaignLeadsDrawer({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const [tab, setTab] = useState<DrawerTab>("leads");
   const [leads, setLeads] = useState<CampaignLead[]>([]);
   const [available, setAvailable] = useState<Lead[]>([]);
+  const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -326,15 +330,17 @@ function CampaignLeadsDrawer({
   async function reload() {
     setLoading(true);
     try {
-      const [campLeads, allLeads] = await Promise.all([
+      const [campLeads, allLeads, allCalls] = await Promise.all([
         api.campaignLeads(campaign.id, tenant),
         api.leads(tenant),
+        api.calls(tenant),
       ]);
       setLeads(campLeads);
       const inCampaign = new Set(campLeads.map((cl) => cl.leadId));
       setAvailable(allLeads.filter((l) => !inCampaign.has(l.id)));
+      setCalls(allCalls.filter((c) => c.campaignId === campaign.id));
     } catch (err) {
-      toast.push(`Error cargando leads: ${err instanceof ApiError ? err.code : "error"}`, "danger");
+      toast.push(`Error cargando datos: ${err instanceof ApiError ? err.code : "error"}`, "danger");
     } finally {
       setLoading(false);
     }
@@ -345,6 +351,16 @@ function CampaignLeadsDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign.id]);
 
+  // Refresco automático cada 10s cuando la pestaña "Llamadas" está abierta —
+  // así el operador ve en vivo qué leads están siendo marcados ahora mismo
+  // sin recargar la página.
+  useEffect(() => {
+    if (tab !== "calls") return;
+    const id = setInterval(reload, 10_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, campaign.id]);
+
   async function handleAdd() {
     if (selected.size === 0) return;
     setAdding(true);
@@ -354,6 +370,7 @@ function CampaignLeadsDrawer({
       setSelected(new Set());
       await reload();
       onChanged();
+      setTab("leads");
     } catch (err) {
       toast.push(`Error: ${err instanceof ApiError ? err.code : "error"}`, "danger");
     } finally {
@@ -375,38 +392,63 @@ function CampaignLeadsDrawer({
   return (
     <div className="drawer-overlay" role="dialog" aria-modal="true">
       <button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar" />
-      <aside className="drawer">
+      <aside className="drawer wide">
         <header className="drawer-header">
           <div>
-            <p className="eyebrow">Leads de la campaña</p>
+            <p className="eyebrow">Campaña</p>
             <h2>{campaign.name}</h2>
+            <p className="subtle" style={{ marginTop: 4 }}>
+              {leads.length} leads · {calls.length} llamadas · {campaign.maxConcurrent} en paralelo
+            </p>
           </div>
           <button className="button secondary compact" onClick={onClose}>
             Cerrar
           </button>
         </header>
+
+        <div className="filter-row" style={{ padding: "12px 24px 0", margin: 0 }}>
+          <button
+            className={`chip-button${tab === "leads" ? " active" : ""}`}
+            onClick={() => setTab("leads")}
+          >
+            Leads ({leads.length})
+          </button>
+          <button
+            className={`chip-button${tab === "calls" ? " active" : ""}`}
+            onClick={() => setTab("calls")}
+          >
+            Llamadas ({calls.length})
+          </button>
+          <button
+            className={`chip-button${tab === "add" ? " active" : ""}`}
+            onClick={() => setTab("add")}
+          >
+            Añadir ({available.length} disponibles)
+          </button>
+        </div>
+
         <div className="drawer-body">
-          <section style={{ marginBottom: 24 }}>
-            <h3 style={{ marginBottom: 12 }}>En la campaña ({leads.length})</h3>
-            {loading ? (
+          {tab === "leads" ? (
+            loading ? (
               <p className="subtle">Cargando…</p>
             ) : leads.length === 0 ? (
               <p className="subtle">Aún no hay leads en esta campaña.</p>
             ) : (
-              <table className="compact">
+              <table>
                 <thead>
                   <tr>
                     <th>Nombre</th>
                     <th>Teléfono</th>
                     <th>Estado</th>
                     <th>Intentos</th>
+                    <th>Último intento</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {leads.map((cl) => (
                     <tr key={cl.id}>
-                      <td>{cl.leadName || "—"}</td>
+                      <td className="primary-cell">{cl.leadName || "—"}</td>
                       <td>
                         <code className="mono">{cl.leadPhone || ""}</code>
                       </td>
@@ -414,6 +456,9 @@ function CampaignLeadsDrawer({
                         <span className={statusClass(cl.status)}>{cl.status}</span>
                       </td>
                       <td>{cl.attempts}</td>
+                      <td className="subtle">
+                        {cl.lastAttemptAt ? new Date(cl.lastAttemptAt).toLocaleString() : "—"}
+                      </td>
                       <td>
                         <button className="button ghost compact" onClick={() => handleRemove(cl.leadId)}>
                           Retirar
@@ -423,23 +468,72 @@ function CampaignLeadsDrawer({
                   ))}
                 </tbody>
               </table>
-            )}
-          </section>
-
-          <section>
-            <h3 style={{ marginBottom: 12 }}>Añadir leads existentes ({available.length} disponibles)</h3>
-            {available.length === 0 ? (
-              <p className="subtle">No hay más leads en este tenant para añadir.</p>
+            )
+          ) : tab === "calls" ? (
+            loading ? (
+              <p className="subtle">Cargando…</p>
+            ) : calls.length === 0 ? (
+              <p className="subtle">
+                El bot aún no ha realizado ninguna llamada en esta campaña. Si está en estado{" "}
+                <code className="mono">active</code>, el worker la marcará al próximo tick (cada 30s).
+              </p>
             ) : (
               <>
-                <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
-                  <table className="compact">
+                <p className="subtle" style={{ marginBottom: 12 }}>
+                  Historial de las llamadas que el bot ha lanzado para esta campaña. Refresca cada 10s.
+                </p>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lead</th>
+                      <th>Teléfono</th>
+                      <th>Status</th>
+                      <th>Outcome</th>
+                      <th>Duración</th>
+                      <th>Inicio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calls.map((c) => (
+                      <tr key={c.id}>
+                        <td>{c.leadName || "—"}</td>
+                        <td>
+                          <code className="mono">{c.phone}</code>
+                        </td>
+                        <td>
+                          <span className={statusClass(c.status)}>{c.status}</span>
+                        </td>
+                        <td>
+                          <span className={statusClass(c.outcome)}>{c.outcome || "—"}</span>
+                        </td>
+                        <td>{c.durationSec > 0 ? `${c.durationSec}s` : "—"}</td>
+                        <td className="subtle">
+                          {c.startedAt ? new Date(c.startedAt).toLocaleString() : "queued"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )
+          ) : (
+            // tab === "add"
+            available.length === 0 ? (
+              <p className="subtle">
+                No hay más leads en este tenant para añadir. Crea leads desde{" "}
+                <a href="/portal/leads">Leads</a>.
+              </p>
+            ) : (
+              <>
+                <div style={{ maxHeight: 380, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+                  <table>
                     <thead>
                       <tr>
                         <th style={{ width: 40 }}></th>
                         <th>Nombre</th>
                         <th>Teléfono</th>
                         <th>Tipo</th>
+                        <th>Estado</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -462,6 +556,9 @@ function CampaignLeadsDrawer({
                             <code className="mono">{l.phone}</code>
                           </td>
                           <td>{l.type}</td>
+                          <td>
+                            <span className={statusClass(l.status)}>{l.status}</span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -473,8 +570,8 @@ function CampaignLeadsDrawer({
                   </button>
                 </div>
               </>
-            )}
-          </section>
+            )
+          )}
         </div>
       </aside>
     </div>

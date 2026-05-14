@@ -1049,6 +1049,13 @@ tr:last-child td {
   overflow: auto;
 }
 
+.drawer.wide {
+  /* Para drawers que contienen tablas con varias columnas (gestión de
+     leads, historial de llamadas, etc.) el ancho estándar de 460px no
+     cabe y aparece scroll horizontal. */
+  width: min(820px, 100%);
+}
+
 .drawer-header {
   padding: 24px 24px 14px;
   display: flex;
