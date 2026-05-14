@@ -122,40 +122,47 @@ textarea {
 
 .brand {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 8px 16px;
+  border-bottom: 1px solid rgba(245, 243, 238, 0.06);
+}
+
+.brand-row {
+  display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 6px 18px;
-  border-bottom: 1px solid rgba(245, 243, 238, 0.08);
+  gap: 10px;
 }
 
 .brand-mark {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   display: block;
-  flex: 0 0 36px;
+  flex: 0 0 28px;
 }
 
-.brand-text strong {
-  display: block;
-  font-size: 18px;
+.brand-name {
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   color: var(--paper);
+  line-height: 1;
 }
 
-.brand-text strong .brand-ai {
-  color: var(--muted);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+.brand-name .brand-ai {
+  color: var(--coral);
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
-.brand-text span {
+.brand-tagline {
   display: block;
   color: var(--quiet);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  margin-top: 2px;
+  padding-left: 38px; /* alinea con el texto, no con el logo */
+  line-height: 1.4;
 }
 
 .tenant-card {
@@ -268,28 +275,39 @@ textarea {
   align-items: center;
   padding: 9px 12px;
   border-radius: var(--radius-sm);
-  color: rgba(245, 243, 238, 0.7);
+  color: rgba(245, 243, 238, 0.72);
   font-size: 13.5px;
   font-weight: 500;
   letter-spacing: -0.005em;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 140ms ease, color 140ms ease;
+  position: relative;
 }
 
 .nav-link svg {
   width: 16px;
   height: 16px;
   stroke-width: 1.75;
+  color: rgba(245, 243, 238, 0.5);
+  transition: color 140ms ease;
 }
 
 .nav-link:hover {
-  background: rgba(245, 243, 238, 0.06);
+  background: rgba(245, 243, 238, 0.05);
   color: var(--paper);
 }
 
+.nav-link:hover svg {
+  color: rgba(245, 243, 238, 0.85);
+}
+
 .nav-link.active {
-  background: rgba(232, 93, 60, 0.14);
+  background: rgba(232, 93, 60, 0.16);
   color: var(--paper);
-  box-shadow: inset 2px 0 0 var(--coral);
+  font-weight: 600;
+}
+
+.nav-link.active:hover {
+  background: rgba(232, 93, 60, 0.22);
 }
 
 .nav-link.active svg {
@@ -341,21 +359,34 @@ textarea {
   color: var(--quiet);
 }
 
+/* Doble clase para ganar a .button.ghost que se declara después y forzaría
+   color: var(--ink) (negro) → ilegible sobre el sidebar oscuro. */
+.button.ghost.logout-button,
 .logout-button {
   justify-content: center;
-  color: rgba(245, 243, 238, 0.75);
-  border: 1px solid rgba(245, 243, 238, 0.1);
-  background: rgba(245, 243, 238, 0.03);
+  color: rgba(245, 243, 238, 0.88);
+  border: 1px solid rgba(245, 243, 238, 0.14);
+  background: rgba(245, 243, 238, 0.04);
+  font-weight: 500;
 }
 
+.button.ghost.logout-button:hover:not(:disabled),
 .logout-button:hover:not(:disabled) {
-  background: rgba(245, 243, 238, 0.08);
+  background: rgba(232, 93, 60, 0.14);
+  border-color: rgba(232, 93, 60, 0.4);
   color: var(--paper);
+}
+
+.button.ghost.logout-button:hover:not(:disabled) svg,
+.logout-button:hover:not(:disabled) svg {
+  color: var(--coral);
 }
 
 .logout-button svg {
   width: 14px;
   height: 14px;
+  color: rgba(245, 243, 238, 0.7);
+  transition: color 140ms ease;
 }
 
 .main {

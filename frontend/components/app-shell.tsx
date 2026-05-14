@@ -74,13 +74,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <BrandMark size={36} className="brand-mark" />
-          <div className="brand-text">
-            <strong>
+          <div className="brand-row">
+            <BrandMark size={28} className="brand-mark" />
+            <strong className="brand-name">
               timbre<span className="brand-ai">.ai</span>
             </strong>
-            <span>{t("shell.tagline")}</span>
           </div>
+          <span className="brand-tagline">{t("shell.tagline")}</span>
         </div>
 
         <div className="tenant-card">
