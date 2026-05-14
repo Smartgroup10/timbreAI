@@ -63,22 +63,38 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 	// se acelera 3x → el LLM no entiende nada. Usamos g711_ulaw para que
 	// ambos lados hablen en 8 kHz y solo convertimos slin↔ulaw aquí.
 	// Patrón copiado de Smartgroup10/SmartSIP.
-	initMsg := map[string]any{
-		"type": "session.update",
-		"session": map[string]any{
-			"modalities":          []string{"audio", "text"},
-			"instructions":        SystemPrompt(s.Config),
-			"voice":               voice,
-			"input_audio_format":  "g711_ulaw",
-			"output_audio_format": "g711_ulaw",
-			"turn_detection": map[string]any{
-				"type":                "server_vad",
-				"threshold":           0.5,
-				"prefix_padding_ms":   300,
-				"silence_duration_ms": 600,
-			},
-			"input_audio_transcription": map[string]any{"model": "whisper-1"},
+	sessionCfg := map[string]any{
+		"modalities":          []string{"audio", "text"},
+		"instructions":        SystemPrompt(s.Config),
+		"voice":               voice,
+		"input_audio_format":  "g711_ulaw",
+		"output_audio_format": "g711_ulaw",
+		"turn_detection": map[string]any{
+			"type":                "server_vad",
+			"threshold":           0.5,
+			"prefix_padding_ms":   300,
+			"silence_duration_ms": 600,
 		},
+		"input_audio_transcription": map[string]any{"model": "whisper-1"},
+	}
+	// Tools: OpenAI Realtime acepta [{type:"function", name, description, parameters}].
+	// Sin esto el LLM nunca emitirá function_call.
+	if len(s.Config.Tools) > 0 {
+		tools := make([]map[string]any, 0, len(s.Config.Tools))
+		for _, t := range s.Config.Tools {
+			tools = append(tools, map[string]any{
+				"type":        "function",
+				"name":        t.Name,
+				"description": t.Description,
+				"parameters":  t.Parameters,
+			})
+		}
+		sessionCfg["tools"] = tools
+		sessionCfg["tool_choice"] = "auto"
+	}
+	initMsg := map[string]any{
+		"type":    "session.update",
+		"session": sessionCfg,
 	}
 	if err := writeJSON(ctx, conn, initMsg); err != nil {
 		return err
@@ -107,7 +123,7 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 		if err := json.Unmarshal(raw, &msg); err != nil {
 			continue
 		}
-		o.handleEvent(msg, s)
+		o.handleEvent(ctx, conn, msg, s)
 	}
 }
 
@@ -135,7 +151,7 @@ func (o *OpenAIRealtime) pumpAudioIn(ctx context.Context, conn *websocket.Conn, 
 	}
 }
 
-func (o *OpenAIRealtime) handleEvent(msg map[string]any, s *session.Session) {
+func (o *OpenAIRealtime) handleEvent(ctx context.Context, conn *websocket.Conn, msg map[string]any, s *session.Session) {
 	t, _ := msg["type"].(string)
 	switch t {
 	case "response.audio.delta":
@@ -166,14 +182,80 @@ func (o *OpenAIRealtime) handleEvent(msg map[string]any, s *session.Session) {
 		}
 	case "input_audio_buffer.speech_started":
 		emit(s, session.Event{Type: "status", State: "listening"})
+		// Barge-in equivalente al de Deepgram: vaciar AudioOut para cortar
+		// el TTS pendiente que aún no haya salido al caller.
+		flushAudioOut(s)
 	case "input_audio_buffer.speech_stopped":
 		emit(s, session.Event{Type: "status", State: "thinking"})
 	case "response.created":
 		emit(s, session.Event{Type: "status", State: "speaking"})
 	case "response.done":
 		emit(s, session.Event{Type: "status", State: "listening"})
+		// Cuando la response.done contiene output items de tipo "function_call",
+		// el LLM nos pide que ejecutemos una tool. Mismo evento que en el SDK
+		// estándar de OpenAI — la API Realtime cierra el turno y nos manda el
+		// arguments completo en el item.
+		o.dispatchFunctionCalls(ctx, conn, s, msg)
 	case "error":
 		emit(s, session.Event{Type: "error", Message: jsonString(msg, "error", "message")})
+	}
+}
+
+// dispatchFunctionCalls extrae los items de tipo "function_call" del payload
+// de response.done, ejecuta cada uno via session.InvokeTool y envía a OpenAI
+// el resultado como conversation.item.create + response.create para que el
+// LLM continúe el turno con el output disponible.
+func (o *OpenAIRealtime) dispatchFunctionCalls(ctx context.Context, conn *websocket.Conn, s *session.Session, msg map[string]any) {
+	response, _ := msg["response"].(map[string]any)
+	if response == nil {
+		return
+	}
+	output, _ := response["output"].([]any)
+	if len(output) == 0 {
+		return
+	}
+	dispatched := false
+	for _, raw := range output {
+		item, _ := raw.(map[string]any)
+		if item == nil {
+			continue
+		}
+		if t, _ := item["type"].(string); t != "function_call" {
+			continue
+		}
+		name, _ := item["name"].(string)
+		callID, _ := item["call_id"].(string)
+		argsStr, _ := item["arguments"].(string)
+		if name == "" || callID == "" {
+			continue
+		}
+		args := map[string]any{}
+		if argsStr != "" {
+			_ = json.Unmarshal([]byte(argsStr), &args)
+		}
+		// Síncrono pero corto — InvokeTool tiene timeout en el webhook client.
+		content, ok := s.InvokeTool(ctx, name, args)
+		if !ok {
+			o.logger.Warn("openai tool invoke failed", "tool", name)
+		}
+		// Empujamos el resultado como conversation.item function_call_output.
+		if err := writeJSON(ctx, conn, map[string]any{
+			"type": "conversation.item.create",
+			"item": map[string]any{
+				"type":    "function_call_output",
+				"call_id": callID,
+				"output":  content,
+			},
+		}); err != nil {
+			o.logger.Warn("openai conversation.item.create", "error", err)
+			continue
+		}
+		dispatched = true
+	}
+	if dispatched {
+		// Pedimos al LLM que produzca la siguiente respuesta consumiendo los
+		// outputs. Sin response.create el modelo se queda esperando.
+		_ = writeJSON(ctx, conn, map[string]any{"type": "response.create"})
 	}
 }
 

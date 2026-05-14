@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Bot as BotIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import { useConfirm } from "../../../components/confirm";
 import { EmptyState } from "../../../components/empty";
+import { BotToolsEditor } from "../../../components/bot-tools-editor";
 import { CardGridSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, Bot, DID, statusClass } from "../../../lib/api";
@@ -481,6 +482,21 @@ function BotEditor({
             {submitting ? t("bots.editor.submit.creating") : mode === "create" ? t("bots.editor.submit.create") : t("bots.editor.submit.save")}
           </button>
         </form>
+
+        {/* Tools / function calling. Solo en modo edit — para tools en
+            modo create necesitaríamos crear el bot primero y luego
+            ofrecer tools, lo que confunde al usuario. */}
+        {mode === "edit" && bot ? (
+          <div className="drawer-body" style={{ paddingTop: 0 }}>
+            <BotToolsEditor botId={bot.id} />
+          </div>
+        ) : (
+          <div className="drawer-body" style={{ paddingTop: 0 }}>
+            <p className="subtle" style={{ fontSize: 12.5 }}>
+              {t("tools.section.savefirst")}
+            </p>
+          </div>
+        )}
       </aside>
     </div>
   );

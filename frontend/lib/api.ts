@@ -231,6 +231,38 @@ export type PricingTable = {
   centsPerMin: Record<string, number>;
 };
 
+/** Acciones soportadas para una bot tool. Whitelist replicada del backend. */
+export type BotToolActionType =
+  | "set_lead_outcome"
+  | "set_lead_status"
+  | "schedule_callback"
+  | "webhook"
+  | "end_call"
+  | "transfer_human";
+
+export type BotTool = {
+  id: string;
+  tenantId: string;
+  botId: string;
+  name: string;
+  description: string;
+  parametersSchema: Record<string, unknown>;
+  actionType: BotToolActionType;
+  actionConfig: Record<string, unknown>;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BotToolInput = {
+  name: string;
+  description: string;
+  parametersSchema: Record<string, unknown>;
+  actionType: BotToolActionType;
+  actionConfig: Record<string, unknown>;
+  enabled?: boolean;
+};
+
 export type LoginResponse = {
   token: string;
   expiresAt: string;
@@ -339,6 +371,14 @@ export const api = {
   analytics: (tenantOverride?: string) =>
     request<Analytics>("GET", withTenant("/api/analytics", tenantOverride)),
   pricing: () => request<PricingTable>("GET", "/api/pricing"),
+  botTools: (botId: string, tenantOverride?: string) =>
+    request<BotTool[]>("GET", withTenant(`/api/bots/${botId}/tools`, tenantOverride)),
+  createBotTool: (botId: string, input: BotToolInput, tenantOverride?: string) =>
+    request<BotTool>("POST", withTenant(`/api/bots/${botId}/tools`, tenantOverride), input),
+  updateBotTool: (botId: string, toolId: string, input: BotToolInput, tenantOverride?: string) =>
+    request<BotTool>("PATCH", withTenant(`/api/bots/${botId}/tools/${toolId}`, tenantOverride), input),
+  deleteBotTool: (botId: string, toolId: string, tenantOverride?: string) =>
+    request<void>("DELETE", withTenant(`/api/bots/${botId}/tools/${toolId}`, tenantOverride)),
   createLead: (input: Partial<Lead>, tenantOverride?: string) =>
     request<Lead>("POST", withTenant("/api/leads", tenantOverride), input),
   importLeads: (csv: string, tenantOverride?: string) =>
