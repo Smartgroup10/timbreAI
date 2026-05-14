@@ -1,25 +1,59 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { StatCard } from "../../../components/stat-card";
-import { api } from "../../../lib/api";
+import { api, statusClass } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 import { useResource } from "../../../lib/use-resource";
+
+type EndpointState = { resource: string; state: string; channel_ids: string[] };
 
 export default function OperationsPage() {
   const { user } = useAuth();
   const overview = useResource(() => api.overview(), []);
   const ops = useResource(() => api.operations(), []);
+  const trunks = useResource(() => api.adminTrunks(), []);
+  const tenants = useResource(() => api.tenants(), []);
+  const audit = useResource(() => api.adminAudit(), []);
+
+  // Estado SIP en vivo de cada trunk vía ARI — actualiza cada 10s.
+  const [sipState, setSipState] = useState<Record<string, EndpointState>>({});
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const d = await api.adminTrunkStatus();
+        if (cancelled) return;
+        const map: Record<string, EndpointState> = {};
+        for (const ep of d.endpoints) map[ep.resource] = ep;
+        setSipState(map);
+      } catch {
+        /* ignore */
+      }
+    }
+    refresh();
+    const id = setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   if (user && user.role !== "platform_admin") {
     return <div className="empty-state danger">Acceso restringido al rol platform_admin.</div>;
   }
 
   const ariEnabled = Boolean(ops.data?.ariEnabled);
-  const trunkCount = Number(ops.data?.trunkCount ?? 0);
-  const activeTrunks = Number(ops.data?.activeTrunks ?? 0);
   const voiceAgentReachable = Boolean(ops.data?.voiceAgentReachable);
   const voiceProviders = (ops.data?.voiceProviders as string[] | undefined) ?? [];
   const realProviders = voiceProviders.filter((p) => p !== "echo");
+  const trunksData = trunks.data ?? [];
+  const tenantsData = tenants.data ?? [];
+  const auditData = (audit.data ?? []).slice(0, 12);
+
+  // Llamadas activas según ARI: sumamos los channel_ids de todos los endpoints.
+  const activeChannels = Object.values(sipState).reduce((acc, ep) => acc + (ep.channel_ids?.length ?? 0), 0);
+  const registeredTrunks = Object.values(sipState).filter((ep) => ep.state === "online").length;
 
   return (
     <>
@@ -27,10 +61,18 @@ export default function OperationsPage() {
         <div className="page-title">
           <p className="eyebrow">Admin interno</p>
           <h1>Operaciones</h1>
-          <p className="subtle">Salud de telefonia, colas, IA y actividad global de la plataforma.</p>
+          <p className="subtle">Salud de servicios, trunks SIP, llamadas activas y actividad global de la plataforma.</p>
         </div>
         <div className="actions">
-          <button className="button secondary" onClick={() => overview.reload()}>
+          <button
+            className="button secondary"
+            onClick={() => {
+              overview.reload();
+              ops.reload();
+              trunks.reload();
+              audit.reload();
+            }}
+          >
             Refrescar
           </button>
         </div>
@@ -38,28 +80,31 @@ export default function OperationsPage() {
 
       <div className="grid">
         <StatCard
-          label="Llamadas"
-          value={overview.data?.callsToday ?? "—"}
-          hint="Vivas en Postgres"
-          trend={ariEnabled ? "ARI activo" : "ARI deshabilitado"}
+          label="Llamadas activas"
+          value={activeChannels}
+          hint="Channels en ARI ahora"
+          trend={activeChannels > 0 ? "Live" : ""}
         />
         <StatCard
-          label="En cola"
-          value={overview.data?.queuedCalls ?? "—"}
-          hint="Pendientes de originar"
-          trend={activeTrunks > 0 ? `${activeTrunks} trunk activos` : "Sin trunks"}
+          label="Trunks registrados"
+          value={`${registeredTrunks}/${trunksData.length}`}
+          hint="Endpoints SIP online"
+          trend={ariEnabled ? "ARI conectado" : "ARI off"}
         />
         <StatCard
-          label="Campanas"
-          value={overview.data?.activeCampaigns ?? "—"}
-          hint="Status scheduled"
-          trend="Scheduler pendiente"
+          label="Tenants"
+          value={tenantsData.length}
+          hint="Total en plataforma"
         />
         <StatCard
-          label="Callbacks"
-          value={overview.data?.callbacks ?? "—"}
-          hint="Necesitan accion"
-          trend="Manual por ahora"
+          label="Voice agent"
+          value={voiceAgentReachable ? "OK" : "Down"}
+          hint={
+            realProviders.length > 0
+              ? `${realProviders.length} providers reales`
+              : "Solo echo (sin API keys reales)"
+          }
+          trend={realProviders.length > 0 ? realProviders.join(", ") : ""}
         />
       </div>
 
@@ -67,86 +112,134 @@ export default function OperationsPage() {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Infraestructura</p>
-              <h2>Servicios definidos</h2>
+              <p className="eyebrow">Salud de servicios</p>
+              <h2>Cluster</h2>
             </div>
-            <span className="status good">Compose OK</span>
           </div>
           <div className="command-strip">
-            <OpRow label="Backend Go (Postgres)" ok positive="Conectado" />
-            <OpRow label="Asterisk ARI" ok={ariEnabled} positive="Conectado" negative="Deshabilitado" />
-            <OpRow
+            <Row label="Postgres" ok ok_msg="Conectado (estás leyendo de él)" />
+            <Row label="Asterisk ARI" ok={ariEnabled} ok_msg="WS conectado" ko_msg="Deshabilitado o sin handshake" />
+            <Row label="Voice agent" ok={voiceAgentReachable} ok_msg={`Reachable · providers: ${voiceProviders.join(", ")}`} ko_msg="No responde al ping" />
+            <Row
               label="Trunks SIP"
-              ok={activeTrunks > 0}
-              positive={`${activeTrunks}/${trunkCount} activos`}
-              negative={trunkCount > 0 ? "Todos inactivos" : "Sin trunks (configura en /admin/trunks)"}
-            />
-            <OpRow
-              label="Voice agent"
-              ok={voiceAgentReachable}
-              positive={
-                realProviders.length > 0
-                  ? `${realProviders.length} providers reales (${realProviders.join(", ")}) + echo`
-                  : "Echo provider (sin API keys reales)"
-              }
-              negative="No alcanzable"
+              ok={registeredTrunks > 0}
+              ok_msg={`${registeredTrunks}/${trunksData.length} registrados al proveedor`}
+              ko_msg={trunksData.length === 0 ? "No hay trunks configurados" : "Ninguno registrado — revisa creds"}
             />
           </div>
         </section>
+
         <section className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Pipeline objetivo</p>
-              <h2>Latencia voz</h2>
+              <p className="eyebrow">Trunks</p>
+              <h2>Estado SIP en vivo</h2>
             </div>
-            <span className="chip">Realtime</span>
+            <a className="button ghost compact" href="/admin/trunks">Gestionar</a>
           </div>
-          <div className="metric-list">
-            <Meter label="Audio in/out" value="250 ms" pct={32} />
-            <Meter label="Turn taking" value="450 ms" pct={48} />
-            <Meter label="ASR + LLM + TTS" value="600 ms" pct={64} />
-          </div>
-          <p className="subtle" style={{ marginTop: 12 }}>
-            Estos targets se miden cuando el voice agent este conectado al canal ARI via External Media.
-          </p>
+          {trunksData.length === 0 ? (
+            <p className="subtle">Aún no hay trunks. Crea uno desde Trunks y DIDs.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Endpoint</th>
+                  <th>Proveedor</th>
+                  <th>Estado</th>
+                  <th>Channels</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trunksData.map((t) => {
+                  const sip = sipState[t.asteriskEndpoint];
+                  const stateLabel = sip ? (sip.state === "online" ? "registrado" : sip.state) : "desconocido";
+                  return (
+                    <tr key={t.id}>
+                      <td>
+                        <code className="mono">{t.asteriskEndpoint}</code>
+                      </td>
+                      <td>{t.provider || "—"}</td>
+                      <td>
+                        <span className={statusClass(stateLabel)}>{stateLabel}</span>
+                      </td>
+                      <td>{sip?.channel_ids?.length ?? 0}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </section>
       </div>
 
       <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Configuracion en vivo</p>
-            <h2>Variables del backend</h2>
+            <p className="eyebrow">Auditoría reciente</p>
+            <h2>Últimos cambios</h2>
           </div>
-          <span className="chip">Solo lectura</span>
+          <a className="button ghost compact" href="/admin/audit">Ver todo</a>
         </div>
-        <pre className="code-block">
-{JSON.stringify(ops.data ?? {}, null, 2)}
-        </pre>
+        {auditData.length === 0 ? (
+          <p className="subtle">Sin actividad reciente.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Tenant</th>
+                <th>Actor</th>
+                <th>Acción</th>
+                <th>Entidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditData.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    <code className="mono">{new Date(a.createdAt).toLocaleTimeString()}</code>
+                  </td>
+                  <td>{a.tenantId ?? "—"}</td>
+                  <td>{a.actorEmail || a.actorId}</td>
+                  <td>
+                    <code className="mono">{a.action}</code>
+                  </td>
+                  <td>
+                    <span className="subtle">
+                      {a.entityType}/{a.entityId.slice(0, 16)}
+                      {a.entityId.length > 16 ? "…" : ""}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Build info</p>
+            <h2>Versión desplegada</h2>
+          </div>
+          <span className="chip">v{(ops.data?.version as string) || "?"}</span>
+        </div>
+        <div className="command-strip">
+          <Row label="ARI App" ok ok_msg={(ops.data?.ariApp as string) || "—"} />
+          <Row label="JWT TTL" ok ok_msg={`${ops.data?.jwtTtlHours ?? "?"} h`} />
+          <Row label="SIP test extension" ok ok_msg={(ops.data?.sipTestExt as string) || "—"} />
+        </div>
       </section>
     </>
   );
 }
 
-function OpRow({ label, ok, positive, negative }: { label: string; ok: boolean; positive?: string; negative?: string }) {
+function Row({ label, ok, ok_msg, ko_msg }: { label: string; ok: boolean; ok_msg?: string; ko_msg?: string }) {
   return (
     <div className="command-row">
       <span>{label}</span>
-      <span className={ok ? "status good" : "status warn"}>{ok ? positive || "OK" : negative || "Pendiente"}</span>
-    </div>
-  );
-}
-
-function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
-  return (
-    <div>
-      <div className="metric-item">
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-      <div className="meter">
-        <span style={{ width: `${pct}%` }} />
-      </div>
+      <span className={ok ? "status good" : "status warn"}>{ok ? ok_msg || "OK" : ko_msg || "Pendiente"}</span>
     </div>
   );
 }

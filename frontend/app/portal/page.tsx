@@ -1,20 +1,46 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowDownRight, ArrowUpRight, Minus, Phone, PhoneCall } from "lucide-react";
 import { StatCard } from "../../components/stat-card";
 import { TestCallDrawer } from "../../components/test-call-drawer";
 import { DailyBars, HBars } from "../../components/charts";
-import { api } from "../../lib/api";
-import { useAuth, useTenantScope } from "../../lib/auth-context";
+import { api, Call, statusClass } from "../../lib/api";
+import { useTenantScope } from "../../lib/auth-context";
 import { useResource } from "../../lib/use-resource";
 
+const LIVE_STATUSES = new Set(["queued", "dialing", "in_progress", "answered"]);
+
 export default function PortalDashboard() {
-  const { user } = useAuth();
   const tenant = useTenantScope();
   const overview = useResource(() => api.overview(tenant), [tenant]);
   const analytics = useResource(() => api.analytics(tenant), [tenant]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Llamadas en curso AHORA (queued/dialing/in_progress). Refrescamos cada 5s
+  // — la única vista en la app que justifica polling rápido porque el operador
+  // está mirando si su última campaña está marcando.
+  const [liveCalls, setLiveCalls] = useState<Call[]>([]);
+  const [recentCalls, setRecentCalls] = useState<Call[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const all = await api.calls(tenant);
+        if (cancelled) return;
+        setLiveCalls(all.filter((c) => LIVE_STATUSES.has(c.status)).slice(0, 10));
+        setRecentCalls(all.filter((c) => !LIVE_STATUSES.has(c.status)).slice(0, 6));
+      } catch {
+        /* ignore */
+      }
+    }
+    refresh();
+    const id = setInterval(refresh, 5_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [tenant]);
 
   const trend = computeTrend(analytics.data?.totalsLast7 ?? 0, analytics.data?.totalsPrev7 ?? 0);
 
@@ -25,7 +51,7 @@ export default function PortalDashboard() {
           <p className="eyebrow">Portal cliente</p>
           <h1>Centro de llamadas IA</h1>
           <p className="subtle">
-            Controla leads, bots, campañas y resultados desde una vista pensada para operar todos los días.
+            Vista en vivo de campañas, bots y resultados. Lo que esté pasando ahora aparece arriba.
           </p>
         </div>
         <div className="actions">
@@ -38,21 +64,79 @@ export default function PortalDashboard() {
         </div>
       </div>
 
-      <section className="hero-panel">
-        <div className="command-panel">
-          <p className="eyebrow">Estado de operación</p>
-          <h2>Postgres conectado, ARI listo para originar</h2>
-          <p className="subtle">
-            Los datos vienen de Postgres y la auth aisla por tenant. Activa ARI en .env y configura el trunk SIP para
-            lanzar llamadas reales.
-          </p>
-          <div className="filter-row">
-            <span className="chip">Usuario: {user?.email}</span>
-            <span className="chip">Rol: {user?.role}</span>
-            <span className="chip">Tenant: {tenant || user?.tenantId || "—"}</span>
+      <div className="grid">
+        <StatCard
+          label="En curso ahora"
+          value={liveCalls.length}
+          hint={liveCalls.length === 0 ? "Sin llamadas activas" : "Refresca cada 5s"}
+          trend={liveCalls.length > 0 ? "Live" : ""}
+        />
+        <StatCard
+          label="Llamadas hoy"
+          value={overview.data?.callsToday ?? "—"}
+          hint="Total iniciadas en las últimas 24h"
+          trend={overview.loading ? "Cargando…" : ""}
+        />
+        <StatCard
+          label="Leads calificados"
+          value={overview.data?.qualifiedLeads ?? "—"}
+          hint="Outcome=qualified"
+          trend="Listos para seguimiento humano"
+        />
+        <StatCard
+          label="Campañas activas"
+          value={overview.data?.activeCampaigns ?? "—"}
+          hint={`${overview.data?.queuedCalls ?? 0} llamadas en cola`}
+          trend={overview.data?.queuedCalls ? "Cola con llamadas" : ""}
+        />
+      </div>
+
+      {overview.error ? <div className="form-error" style={{ marginTop: 16 }}>Error: {overview.error}</div> : null}
+
+      <div className="grid two" style={{ marginTop: 16 }}>
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">
+                <PhoneCall aria-hidden="true" style={{ verticalAlign: "middle", marginRight: 4 }} />
+                En vivo
+              </p>
+              <h2>Llamadas activas ahora</h2>
+            </div>
+            {liveCalls.length > 0 ? <span className="status good">{liveCalls.length} en curso</span> : null}
           </div>
-        </div>
-        <div className="panel">
+          {liveCalls.length === 0 ? (
+            <p className="subtle">
+              Ninguna llamada en marcha. Lanza una campaña desde <a href="/portal/campaigns">Campañas</a> o usa{" "}
+              el botón <strong>Llamada de prueba</strong> arriba.
+            </p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Lead</th>
+                  <th>Teléfono</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveCalls.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.leadName || "—"}</td>
+                    <td>
+                      <code className="mono">{c.phone}</code>
+                    </td>
+                    <td>
+                      <span className={statusClass(c.status)}>{c.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        <section className="panel">
           <div className="panel-header">
             <div>
               <p className="eyebrow">7 días</p>
@@ -66,37 +150,53 @@ export default function PortalDashboard() {
             <span className="chip">{analytics.data?.timezone || "UTC"}</span>
           </div>
           <DailyBars data={analytics.data?.last7Days ?? []} />
-        </div>
-      </section>
-
-      <div className="grid">
-        <StatCard
-          label="Llamadas hoy"
-          value={overview.data?.callsToday ?? "—"}
-          hint="Incluye completadas y en cola"
-          trend={overview.loading ? "Cargando…" : "Vivo desde Postgres"}
-        />
-        <StatCard
-          label="Leads calificados"
-          value={overview.data?.qualifiedLeads ?? "—"}
-          hint="Listos para seguimiento humano"
-          trend="Alta intención"
-        />
-        <StatCard
-          label="Callbacks"
-          value={overview.data?.callbacks ?? "—"}
-          hint="Pendientes de reagendar"
-          trend="Acción requerida"
-        />
-        <StatCard
-          label="Campañas activas"
-          value={overview.data?.activeCampaigns ?? "—"}
-          hint={`${overview.data?.queuedCalls ?? 0} llamadas en cola`}
-          trend={overview.data?.queuedCalls ? "Cola con llamadas" : "Sin actividad"}
-        />
+        </section>
       </div>
 
-      {overview.error ? <div className="form-error" style={{ marginTop: 16 }}>Error: {overview.error}</div> : null}
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">
+              <Phone aria-hidden="true" style={{ verticalAlign: "middle", marginRight: 4 }} />
+              Recientes
+            </p>
+            <h2>Últimas llamadas finalizadas</h2>
+          </div>
+          <a className="button ghost compact" href="/portal/calls">
+            Ver todas
+          </a>
+        </div>
+        {recentCalls.length === 0 ? (
+          <p className="subtle">Aún no hay llamadas finalizadas en este tenant.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Lead</th>
+                <th>Teléfono</th>
+                <th>Campaña</th>
+                <th>Outcome</th>
+                <th>Duración</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentCalls.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.leadName || "—"}</td>
+                  <td>
+                    <code className="mono">{c.phone}</code>
+                  </td>
+                  <td>{c.campaign || "—"}</td>
+                  <td>
+                    <span className={statusClass(c.outcome)}>{c.outcome || "—"}</span>
+                  </td>
+                  <td>{c.durationSec > 0 ? `${c.durationSec}s` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       <div className="grid two" style={{ marginTop: 16 }}>
         <section className="panel">
