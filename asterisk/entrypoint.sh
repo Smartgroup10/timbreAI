@@ -170,7 +170,7 @@ exten => _X.,1,NoOp(Inbound desde trunk SIP a \${EXTEN})
 ; UUID — el voice-agent lo usa para identificar qué Session de su registry
 ; debe conectar con esta tubería de audio TCP.
 [audiosocket-bridge]
-exten => _.,1,NoOp(AudioSocket bridge for session \${EXTEN})
+exten => _.,1,Verbose(1,AudioSocket bridge for session \${EXTEN})
  same => n,Answer()
  same => n,AudioSocket(\${EXTEN},${AUDIOSOCKET_HOST:-voice-agent}:${AUDIOSOCKET_PORT:-9092})
  same => n,Hangup()
@@ -191,8 +191,8 @@ cat > /etc/asterisk/logger.conf <<'EOF'
 dateformat = %F %T.%3q
 
 [logfiles]
-console => notice,warning,error
-messages => notice,warning,error
+console => notice,warning,error,verbose
+messages => notice,warning,error,verbose
 EOF
 
 # ── modules.conf ────────────────────────────────────────────────────────
@@ -204,6 +204,16 @@ autoload = yes
 
 preload = res_odbc.so
 preload = res_config_odbc.so
+
+; AudioSocket: transport (res_audiosocket) y dialplan app (app_audiosocket).
+; Si AudioSocket() del dialplan se ejecuta sin que estos módulos estén
+; cargados, Asterisk abre el TCP al voice-agent pero NO manda el UUID y
+; cierra de inmediato. El voice-agent ve "read header: EOF" y la llamada se
+; cuelga sin audio. Si el log al arranque dice "Cannot load module" para
+; alguno, la build de Asterisk no los trae (poco habitual, pero pasa con
+; imágenes muy minimalistas — habría que cambiar de imagen).
+preload = res_audiosocket.so
+preload = app_audiosocket.so
 
 noload = res_config_pgsql.so
 noload = chan_sip.so
