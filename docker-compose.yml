@@ -59,6 +59,9 @@ services:
       ASTERISK_ARI_APP: ${ASTERISK_ARI_APP:-timbre-bot}
       SIP_TEST_EXTENSION: ${SIP_TEST_EXTENSION:-PJSIP/6001}
       SIP_CALLER_ID: ${SIP_CALLER_ID:-timbre.ai <1000>}
+      # ulaw (default) evita transcoding en el bridge — trunk SIP usa ulaw/alaw
+      # nativamente. slin16 daba problemas de "no oigo audio" en algunas builds.
+      EXTERNAL_MEDIA_FORMAT: ${EXTERNAL_MEDIA_FORMAT:-ulaw}
       JWT_SECRET: ${JWT_SECRET}
       JWT_TTL: ${JWT_TTL:-12h}
       SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY}
@@ -103,6 +106,8 @@ services:
       RTP_PORT_START: ${RTP_PORT_START:-12000}
       RTP_PORT_END: ${RTP_PORT_END:-12099}
       RTP_ADVERTISE_HOST: ${RTP_ADVERTISE_HOST:-voice-agent}
+      # DEBE coincidir con la env del backend del mismo nombre.
+      EXTERNAL_MEDIA_FORMAT: ${EXTERNAL_MEDIA_FORMAT:-ulaw}
       # API keys (OpenAI / Deepgram / AssemblyAI) viven en Postgres
       # (tabla tenant_voice_credentials), configurables desde /portal/settings.
     expose:

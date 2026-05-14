@@ -24,6 +24,7 @@ type RTPConfig struct {
 	PortStart      int
 	PortEnd        int
 	AdvertiseHost  string // What Asterisk should use to reach us. e.g. "voice-agent" inside compose, or a public IP.
+	Format         string // Formato del External Media de Asterisk: slin16 (default) | ulaw | alaw. DEBE coincidir con el `format` que pasa el backend a Asterisk.
 }
 
 type OpenAIConfig struct {
@@ -64,6 +65,7 @@ func Load() (Config, error) {
 			PortStart:     envInt("RTP_PORT_START", 12000),
 			PortEnd:       envInt("RTP_PORT_END", 12099),
 			AdvertiseHost: env("RTP_ADVERTISE_HOST", "voice-agent"),
+			Format:        env("EXTERNAL_MEDIA_FORMAT", "ulaw"),
 		},
 
 		OpenAI: OpenAIConfig{

@@ -32,23 +32,45 @@ type Listener struct {
 	ssrc        uint32
 	sequence    uint16
 	timestamp   uint32
-	payloadType uint8 // mirrors what Asterisk sent us on the first packet; defaults to 118
+	payloadType uint8 // mirrors what Asterisk sent us on the first packet; defaults to 118 (slin16)
+	frameBytes  int   // tamaño de cada paquete RTP saliente. 640 = slin16/20ms, 160 = ulaw/20ms
+	samplesPerFrame uint32 // muestras por paquete, para incrementar timestamp correctamente
 }
 
+// NewListener crea un listener configurado para slin16 (16 kHz, 640 B / 20 ms).
+// Compatibilidad con código existente.
 func NewListener(port int, logger *slog.Logger) (*Listener, error) {
+	return NewListenerForFormat(port, "slin16", logger)
+}
+
+// NewListenerForFormat permite elegir el formato del External Media. Mapea cada
+// codec soportado a su frameBytes, samples/frame y payload type por defecto:
+//   - "slin16": 16 kHz lineal 16-bit → 640 B / 20 ms, PT dinámico 118
+//   - "ulaw":   8 kHz μ-law 8-bit   → 160 B / 20 ms, PT 0 (estándar)
+//   - "alaw":   8 kHz A-law 8-bit   → 160 B / 20 ms, PT 8 (estándar)
+func NewListenerForFormat(port int, format string, logger *slog.Logger) (*Listener, error) {
 	addr := &net.UDPAddr{IP: net.IPv4zero, Port: port}
 	conn, err := net.ListenUDP("udp4", addr)
 	if err != nil {
 		return nil, err
 	}
+	frameBytes, samples, pt := 640, uint32(320), uint8(118)
+	switch format {
+	case "ulaw":
+		frameBytes, samples, pt = 160, 160, 0
+	case "alaw":
+		frameBytes, samples, pt = 160, 160, 8
+	}
 	return &Listener{
-		conn:        conn,
-		port:        port,
-		logger:      logger,
-		closing:     make(chan struct{}),
-		ssrc:        rand.Uint32(),
-		sequence:    uint16(rand.Uint32()),
-		payloadType: 118, // dynamic slin16 PT (Asterisk default)
+		conn:            conn,
+		port:            port,
+		logger:          logger,
+		closing:         make(chan struct{}),
+		ssrc:            rand.Uint32(),
+		sequence:        uint16(rand.Uint32()),
+		payloadType:     pt,
+		frameBytes:      frameBytes,
+		samplesPerFrame: samples,
 	}, nil
 }
 
@@ -168,8 +190,10 @@ func (l *Listener) readLoop(ctx context.Context, audioIn chan<- []byte) {
 // flushes a packet when 640 bytes are queued OR the buffer is non-empty after the inactivity
 // flush interval.
 func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
-	const frameBytes = 640 // 16000 Hz * 2 bytes * 0.020 s
-	const samplesPerFrame = 320
+	frameBytes := l.frameBytes
+	if frameBytes == 0 {
+		frameBytes = 640 // fallback compat (slin16)
+	}
 	buf := make([]byte, 0, frameBytes*4)
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
@@ -216,7 +240,6 @@ func (l *Listener) writeLoop(ctx context.Context, audioOut <-chan []byte) {
 			}
 			buf = buf[:0]
 		}
-		_ = samplesPerFrame
 	}
 
 	for {
@@ -257,7 +280,13 @@ func (l *Listener) sendPacket(remote *net.UDPAddr, payload []byte) {
 	binary.BigEndian.PutUint32(header[8:12], l.ssrc)
 
 	l.sequence++
-	l.timestamp += uint32(len(payload) / 2) // 16-bit samples
+	// timestamp avanza en muestras, no en bytes. slin16 = 2 bytes/muestra,
+	// ulaw/alaw = 1 byte/muestra. l.samplesPerFrame ya lo refleja.
+	if l.samplesPerFrame > 0 {
+		l.timestamp += l.samplesPerFrame
+	} else {
+		l.timestamp += uint32(len(payload) / 2) // compat slin16
+	}
 
 	pkt := append(header, payload...)
 	if _, err := l.conn.WriteToUDP(pkt, remote); err != nil && !errors.Is(err, net.ErrClosed) {

@@ -30,16 +30,20 @@ func MakeARIHandler(
 	st *store.Store,
 	ariClient *ari.Client,
 	va *voiceagent.Client,
+	externalMediaFormat string,
 	releaseSlot releaseSlotFn,
 	logger *slog.Logger,
 ) ari.EventHandler {
 	if releaseSlot == nil {
 		releaseSlot = func(string) {}
 	}
+	if externalMediaFormat == "" {
+		externalMediaFormat = "ulaw"
+	}
 	return func(ctx context.Context, ev ari.Event) {
 		switch ev.Type {
 		case "StasisStart":
-			handleStasisStart(ctx, ev, st, ariClient, va, logger)
+			handleStasisStart(ctx, ev, st, ariClient, va, externalMediaFormat, logger)
 		case "ChannelDestroyed":
 			handleChannelDestroyed(ctx, ev, st, releaseSlot, logger)
 		case "ChannelStateChange":
@@ -54,6 +58,7 @@ func handleStasisStart(
 	st *store.Store,
 	ariClient *ari.Client,
 	va *voiceagent.Client,
+	externalMediaFormat string,
 	logger *slog.Logger,
 ) {
 	chID := channelID(ev)
@@ -103,9 +108,14 @@ func handleStasisStart(
 	logger.Info("rtp allocated", "session", call.VoiceSessionID, "host", rtp.Host, "port", rtp.Port)
 
 	// 2) Open the External Media channel on Asterisk.
+	// El format debe coincidir con el del voice-agent (EXTERNAL_MEDIA_FORMAT
+	// en ambos servicios). ulaw evita transcoding en el bridge porque el
+	// trunk del cliente suele usar ulaw/alaw 8kHz nativamente — slin16
+	// requería resampling 16→8 kHz que en algunas builds de Asterisk
+	// fallaba silenciosamente y el caller no oía nada.
 	emCh, err := ariClient.CreateExternalMedia(ctx, ari.ExternalMediaRequest{
 		ExternalHost:   rtp.Host + ":" + itoa(rtp.Port),
-		Format:         "slin16",
+		Format:         externalMediaFormat,
 		Encapsulation:  "rtp",
 		Transport:      "udp",
 		ConnectionType: "client",

@@ -27,7 +27,12 @@ func (s *Server) handleAllocateRTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "rtp_port_pool_exhausted")
 		return
 	}
-	listener, err := rtp.NewListener(port, s.logger)
+	// Formato del External Media. DEBE coincidir con el `format` que el backend
+	// pasa a CreateExternalMedia en Asterisk. ulaw evita transcoding en el
+	// bridge (caller suele usar ulaw/alaw de su trunk), pero los providers
+	// que solo aceptan linear16 (Deepgram/AssemblyAI) requieren decodificar.
+	// El env EXTERNAL_MEDIA_FORMAT en compose marca el default para ambos.
+	listener, err := rtp.NewListenerForFormat(port, s.cfg.RTP.Format, s.logger)
 	if err != nil {
 		s.rtpPool.Release(port)
 		writeError(w, http.StatusInternalServerError, "rtp_listen_failed")

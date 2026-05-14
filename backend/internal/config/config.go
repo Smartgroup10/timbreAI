@@ -20,10 +20,11 @@ type Config struct {
 	BootstrapTenant  Credentials
 	SecretsMasterKey []byte // 32B AES-256 key tras decodificar base64
 
-	ARI        ARIConfig
-	SIP        SIPConfig
-	VoiceAgent VoiceAgentConfig
-	Storage    StorageConfig
+	ARI           ARIConfig
+	SIP           SIPConfig
+	ExternalMedia ExternalMediaConfig
+	VoiceAgent    VoiceAgentConfig
+	Storage       StorageConfig
 }
 
 type StorageConfig struct {
@@ -62,6 +63,14 @@ type SIPConfig struct {
 	OriginateTimeout time.Duration
 }
 
+type ExternalMediaConfig struct {
+	// Format pasa a Asterisk en CreateExternalMedia. DEBE coincidir con
+	// EXTERNAL_MEDIA_FORMAT del voice-agent — si no, los paquetes salen con
+	// frame size incorrecto. Valores: slin16 (16 kHz lineal, default histórico)
+	// | ulaw | alaw (ambos 8 kHz, evitan transcoding en el bridge).
+	Format string
+}
+
 func Load() (Config, error) {
 	cfg := Config{
 		Port:          env("PORT", "8080"),
@@ -94,6 +103,9 @@ func Load() (Config, error) {
 			TestExtension:    env("SIP_TEST_EXTENSION", "PJSIP/6001"),
 			CallerID:         env("SIP_CALLER_ID", "timbre.ai <1000>"),
 			OriginateTimeout: envDuration("SIP_ORIGINATE_TIMEOUT", 30*time.Second),
+		},
+		ExternalMedia: ExternalMediaConfig{
+			Format: env("EXTERNAL_MEDIA_FORMAT", "ulaw"),
 		},
 		VoiceAgent: VoiceAgentConfig{
 			URL:    env("VOICE_AGENT_URL", ""),
