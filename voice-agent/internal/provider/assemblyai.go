@@ -52,6 +52,8 @@ func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
 		return fmt.Errorf("assemblyai voice agent dial: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
+	// 32 KB default es muy poco para audio TTS — fix mismo patrón que OpenAI.
+	conn.SetReadLimit(10 * 1024 * 1024)
 
 	// session.update with everything the agent needs.
 	settings := map[string]any{

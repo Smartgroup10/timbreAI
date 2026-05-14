@@ -49,6 +49,10 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 		return fmt.Errorf("openai realtime dial: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
+	// OpenAI Realtime manda audio deltas grandes (especialmente al greeting).
+	// coder/websocket por defecto limita a 32 KB y dispara "read limited at
+	// 32769 bytes" tirando el provider. 10 MB sobra para cualquier frame.
+	conn.SetReadLimit(10 * 1024 * 1024)
 
 	voice := pick(s.Config.Voice, pick(s.Config.Credentials.OpenAIRealtimeVoice, o.cfg.Voice))
 

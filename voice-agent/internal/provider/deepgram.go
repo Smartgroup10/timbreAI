@@ -66,6 +66,9 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 		return fmt.Errorf("deepgram voice agent dial: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
+	// 32 KB default es muy poco — audio TTS de Aura puede llegar en frames
+	// más grandes y mata el provider con "read limited".
+	conn.SetReadLimit(10 * 1024 * 1024)
 
 	// Deepgram Voice Agent handshake: el servidor manda "Welcome" primero,
 	// luego nosotros mandamos "Settings", luego él contesta "SettingsApplied".
