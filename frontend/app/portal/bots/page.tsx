@@ -14,6 +14,54 @@ import { useT, useStatusLabel } from "../../../lib/i18n";
 const BOT_TYPES = ["renter_inbound", "owner_outbound", "support", "qualification"];
 const BOT_STATUSES = ["draft", "active", "paused"];
 
+// Lista de idiomas/locales soportados por los providers de voz. El primero
+// de cada familia (es-ES, en-US) es el default cuando detectamos idioma
+// genérico desde el ID de voz (-es / -en).
+const LANGUAGE_OPTIONS = [
+  "es-ES",
+  "es-MX",
+  "es-AR",
+  "es-CO",
+  "en-US",
+  "en-GB",
+  "pt-PT",
+  "pt-BR",
+  "fr-FR",
+  "de-DE",
+  "it-IT",
+];
+
+// detectLangFromVoice intenta inferir el locale desde el id o label de una
+// voz. Devuelve null si no puede — entonces dejamos el idioma como esté
+// (p. ej. voces OpenAI Realtime que son multilingüe).
+//
+// Reglas:
+//   - id acaba en "-es" / "-en" / "-pt" → mapea al locale primario de la familia
+//   - label contiene "(ES" / "(EN" / "(PT" / etc. → idem
+//   - el resto: null (no tocamos el idioma)
+function detectLangFromVoice(voiceId: string, voiceLabel: string): string | null {
+  const id = voiceId.toLowerCase();
+  const label = voiceLabel.toUpperCase();
+
+  // 1. Sufijo en el id (patrón Deepgram aura-2-celeste-es).
+  if (/-es$/.test(id) || /-es-/.test(id)) return "es-ES";
+  if (/-en$/.test(id) || /-en-/.test(id)) return "en-US";
+  if (/-pt$/.test(id) || /-pt-/.test(id)) return "pt-PT";
+  if (/-fr$/.test(id) || /-fr-/.test(id)) return "fr-FR";
+  if (/-de$/.test(id) || /-de-/.test(id)) return "de-DE";
+  if (/-it$/.test(id) || /-it-/.test(id)) return "it-IT";
+
+  // 2. Marcador en el label "(ES, ...)" etc.
+  if (/\(ES[,)\s]/.test(label)) return "es-ES";
+  if (/\(EN[,)\s]/.test(label)) return "en-US";
+  if (/\(PT[,)\s]/.test(label)) return "pt-PT";
+  if (/\(FR[,)\s]/.test(label)) return "fr-FR";
+  if (/\(DE[,)\s]/.test(label)) return "de-DE";
+  if (/\(IT[,)\s]/.test(label)) return "it-IT";
+
+  return null;
+}
+
 type CatalogProvider = {
   id: string;
   label: string;
@@ -271,6 +319,22 @@ function BotEditor({
     }
   }, [voiceProvider, voiceOptions.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Cuando cambia la voz, intentamos auto-actualizar el idioma — pero solo
+  // si la FAMILIA cambia (es → en, no es-MX → es-ES). Así respetamos la
+  // variante regional que el usuario haya elegido a mano.
+  function handleVoiceChange(newVoiceId: string) {
+    setVoice(newVoiceId);
+    const opt = voiceOptions.find((v) => v.id === newVoiceId);
+    if (!opt) return;
+    const detected = detectLangFromVoice(opt.id, opt.label);
+    if (!detected) return;
+    const currentFamily = language.split("-")[0];
+    const detectedFamily = detected.split("-")[0];
+    if (currentFamily !== detectedFamily) {
+      setLanguage(detected);
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim()) {
@@ -340,11 +404,26 @@ function BotEditor({
             </div>
             <div className="field">
               <label>{t("bots.editor.field.language")}</label>
-              <input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="es-ES" />
+              <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                {/* Si el bot venía con un locale fuera de la lista, lo
+                    preservamos como primera opción para no sobreescribirlo
+                    silenciosamente al guardar. */}
+                {language && !LANGUAGE_OPTIONS.includes(language) ? (
+                  <option value={language}>{language}</option>
+                ) : null}
+                {LANGUAGE_OPTIONS.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {t(`bots.editor.lang.${loc}`)}
+                  </option>
+                ))}
+              </select>
+              <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
+                {t("bots.editor.lang.autohint")}
+              </p>
             </div>
             <div className="field">
               <label>{t("bots.editor.field.voice")}</label>
-              <select value={voice} onChange={(e) => setVoice(e.target.value)} disabled={voiceOptions.length === 0}>
+              <select value={voice} onChange={(e) => handleVoiceChange(e.target.value)} disabled={voiceOptions.length === 0}>
                 {voiceOptions.length === 0 ? (
                   <option value="">{t("bots.editor.voice.none")}</option>
                 ) : (
