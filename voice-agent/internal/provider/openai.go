@@ -10,6 +10,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"timbre/voice-agent/internal/audio"
 	"timbre/voice-agent/internal/config"
 	"timbre/voice-agent/internal/session"
 )
@@ -56,19 +57,24 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 
 	voice := pick(s.Config.Voice, pick(s.Config.Credentials.OpenAIRealtimeVoice, o.cfg.Voice))
 
-	// Configure session: PCM16 24kHz audio in/out, instructions, voice, server VAD for turn-taking.
+	// Codec: g711_ulaw (8 kHz μ-law). OJO: OpenAI Realtime "pcm16" implica
+	// 24 kHz signed linear. Si le mandas slin a 8 kHz (lo que llega de
+	// AudioSocket) diciéndole que es pcm16, OpenAI lo interpreta a 24 kHz y
+	// se acelera 3x → el LLM no entiende nada. Usamos g711_ulaw para que
+	// ambos lados hablen en 8 kHz y solo convertimos slin↔ulaw aquí.
+	// Patrón copiado de Smartgroup10/SmartSIP.
 	initMsg := map[string]any{
 		"type": "session.update",
 		"session": map[string]any{
-			"modalities":         []string{"audio", "text"},
-			"instructions":       SystemPrompt(s.Config),
-			"voice":              voice,
-			"input_audio_format":  "pcm16",
-			"output_audio_format": "pcm16",
+			"modalities":          []string{"audio", "text"},
+			"instructions":        SystemPrompt(s.Config),
+			"voice":               voice,
+			"input_audio_format":  "g711_ulaw",
+			"output_audio_format": "g711_ulaw",
 			"turn_detection": map[string]any{
-				"type":              "server_vad",
-				"threshold":         0.5,
-				"prefix_padding_ms": 300,
+				"type":                "server_vad",
+				"threshold":           0.5,
+				"prefix_padding_ms":   300,
 				"silence_duration_ms": 600,
 			},
 			"input_audio_transcription": map[string]any{"model": "whisper-1"},
@@ -118,9 +124,12 @@ func (o *OpenAIRealtime) pumpAudioIn(ctx context.Context, conn *websocket.Conn, 
 			if len(chunk) == 0 {
 				continue
 			}
+			// AudioSocket nos da slin 8 kHz (320 B/20 ms). OpenAI espera
+			// g711_ulaw 8 kHz (160 B/20 ms). Convertimos.
+			ulaw := audio.SlinToUlaw(chunk)
 			_ = writeJSON(ctx, conn, map[string]any{
 				"type":  "input_audio_buffer.append",
-				"audio": base64.StdEncoding.EncodeToString(chunk),
+				"audio": base64.StdEncoding.EncodeToString(ulaw),
 			})
 		}
 	}
@@ -130,11 +139,13 @@ func (o *OpenAIRealtime) handleEvent(msg map[string]any, s *session.Session) {
 	t, _ := msg["type"].(string)
 	switch t {
 	case "response.audio.delta":
-		// base64 PCM16 24kHz mono.
+		// base64 g711_ulaw 8 kHz mono. AudioSocket espera slin (8 kHz signed
+		// linear 16-bit), así que convertimos antes de pushear a AudioOut.
 		if data, _ := msg["delta"].(string); data != "" {
-			if audio, err := base64.StdEncoding.DecodeString(data); err == nil {
+			if ulaw, err := base64.StdEncoding.DecodeString(data); err == nil {
+				pcm := audio.UlawToSlin(ulaw)
 				select {
-				case s.AudioOut <- audio:
+				case s.AudioOut <- pcm:
 				case <-s.Context().Done():
 				}
 			}
