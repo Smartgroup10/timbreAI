@@ -8,6 +8,7 @@ import { TableSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
+import { useRealtime } from "../../../lib/use-realtime";
 import { useResource } from "../../../lib/use-resource";
 import { useT } from "../../../lib/i18n";
 
@@ -17,6 +18,13 @@ export default function DoNotCallPage() {
   const tenant = useTenantScope();
   const t = useT();
   const dnc = useResource(() => api.dnc(tenant), [tenant], { pollMs: POLL_MS });
+
+  // Realtime: el polling de 15s sigue ahí como red de seguridad, pero
+  // un add/remove de cualquier otro operador del mismo tenant llega al
+  // instante por WS.
+  useRealtime((ev) => {
+    if (ev.type === "dnc.changed") dnc.reload();
+  });
   const toast = useToast();
   const confirm = useConfirm();
   const [phone, setPhone] = useState("");

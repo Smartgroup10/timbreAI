@@ -49,6 +49,7 @@ func (s *Server) handleDNCAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "dnc.add", "do_not_call", created.ID, map[string]any{"phone": input.Phone, "reason": input.Reason})
+	s.emitRealtime(tenantID, "dnc.changed", map[string]any{"action": "add", "id": created.ID})
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -68,6 +69,7 @@ func (s *Server) handleDNCDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "dnc.remove", "do_not_call", id, nil)
+	s.emitRealtime(tenantID, "dnc.changed", map[string]any{"action": "remove", "id": id})
 	w.WriteHeader(http.StatusNoContent)
 }
 

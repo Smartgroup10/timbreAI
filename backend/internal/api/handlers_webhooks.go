@@ -229,6 +229,9 @@ func (s *Server) OnCallFinished(ctx context.Context, callID string) {
 			Payload:  payload,
 		})
 	}
+	// Realtime push para que las páginas /portal/calls y /portal se
+	// refresquen al instante sin esperar al próximo tick de polling.
+	s.emitRealtime(c.TenantID, "call.finished", map[string]any{"callId": c.ID, "outcome": c.Outcome})
 }
 
 func validateWebhookInput(in webhookEndpointInput) string {

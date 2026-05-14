@@ -9,6 +9,7 @@ import (
 	"timbre/backend/internal/config"
 	"timbre/backend/internal/outwebhook"
 	"timbre/backend/internal/pricing"
+	"timbre/backend/internal/realtime"
 	"timbre/backend/internal/storage"
 	"timbre/backend/internal/store"
 	"timbre/backend/internal/voiceagent"
@@ -22,6 +23,7 @@ type Server struct {
 	storage    *storage.Client
 	pricing    *pricing.Table
 	webhooks   *outwebhook.Dispatcher
+	realtime   *realtime.Hub
 	logger     *slog.Logger
 	loginRate  *rateLimiter
 }
@@ -35,6 +37,7 @@ func New(cfg config.Config, st *store.Store, ariClient *ari.Client, va *voiceage
 		storage:    storeClient,
 		pricing:    pricing.NewTable(),
 		webhooks:   outwebhook.New(st, logger.With("component", "outwebhook"), 4, 1024),
+		realtime:   realtime.NewHub(logger.With("component", "realtime")),
 		logger:     logger,
 		// 1 token per second, burst of 10 => allows brief bursts but blocks brute-force.
 		loginRate: newRateLimiter(time.Second, 10),
@@ -56,12 +59,29 @@ func (s *Server) withCostOne(c store.Call) store.Call {
 	return c
 }
 
+// emitRealtime es el atajo que usan los handlers para empujar eventos al
+// hub. No bloquea — el broadcast es non-blocking por cliente.
+func (s *Server) emitRealtime(tenantID, eventType string, data map[string]any) {
+	if s.realtime == nil || tenantID == "" {
+		return
+	}
+	s.realtime.Broadcast(realtime.Event{
+		TenantID: tenantID,
+		Type:     eventType,
+		Data:     data,
+	})
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	// Public (rate-limited on login to slow brute-force).
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("POST /api/auth/login", s.limit(s.loginRate, s.handleLogin))
+	// Realtime WS: el browser no puede mandar Authorization, así que pasa
+	// el JWT en ?token=. La autenticación va dentro del handler para que
+	// podamos rechazar antes del upgrade.
+	mux.HandleFunc("GET /api/realtime", s.handleRealtime)
 	mux.HandleFunc("GET /api/auth/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("POST /api/auth/password", s.requireAuth(s.handleChangePassword))
 

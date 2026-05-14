@@ -34,6 +34,7 @@ func (s *Server) handleUpdateLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "lead.update", "lead", id, leadDiff(p))
+	s.emitRealtime(tenantID, "lead.updated", map[string]any{"leadId": id, "status": lead.Status})
 	writeJSON(w, http.StatusOK, lead)
 }
 
@@ -53,6 +54,7 @@ func (s *Server) handleDeleteLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "lead.delete", "lead", id, nil)
+	s.emitRealtime(tenantID, "lead.deleted", map[string]any{"leadId": id})
 	w.WriteHeader(http.StatusNoContent)
 }
 

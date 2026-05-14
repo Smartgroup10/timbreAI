@@ -8,6 +8,7 @@ import { TableSkeleton } from "../../../components/skeleton";
 import { TestCallDrawer } from "../../../components/test-call-drawer";
 import { api, formatCostCents, statusClass } from "../../../lib/api";
 import { useTenantScope } from "../../../lib/auth-context";
+import { useRealtime } from "../../../lib/use-realtime";
 import { useResource } from "../../../lib/use-resource";
 import { useT, useStatusLabel } from "../../../lib/i18n";
 
@@ -21,6 +22,14 @@ export default function CallsPage() {
   const calls = useResource(() => api.calls(tenant), [tenant], { pollMs: POLL_MS });
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Realtime push: cuando el backend confirma una llamada terminada,
+  // refrescamos al instante en vez de esperar al próximo tick de polling.
+  useRealtime((ev) => {
+    if (ev.type === "call.finished" || ev.type === "call.updated" || ev.type === "call.created") {
+      calls.reload();
+    }
+  });
 
   const filtered = useMemo(() => {
     const data = calls.data ?? [];
