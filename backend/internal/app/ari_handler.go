@@ -345,17 +345,34 @@ func handleInbound(
 		"direction", "inbound",
 	)
 
-	// 1) Resolver DID → tenant + bot
+	// 1) Resolver DID → tenant (sin escoger bot aún).
 	route, err := st.LookupInboundRoute(ctx, details.Exten)
 	if err != nil {
 		return store.Call{}, fmt.Errorf("lookup inbound route: %w", err)
 	}
-	if route.BotID == "" {
+	logger = logger.With("tenant", route.TenantID, "did", route.DIDID)
+
+	// 2) Evaluar reglas de routing del DID. La decisión puede ser:
+	//    - matched_rule: regla activa matchea (días, horario, prefijo
+	//      del caller, idioma) → usa su target_bot_id.
+	//    - default_did_bot: ninguna regla matchea PERO el DID tiene bot
+	//      asignado via bots.did_id → usa ese (compat con inbound v1).
+	//    - no_route: ni reglas ni bot default → rechazamos (típico:
+	//      "fuera de horario y sin fallback configurado").
+	decision, err := st.ResolveDIDRouting(ctx, route.TenantID, route.DIDID, details.CallerNumber, "", time.Time{})
+	if err != nil {
+		return store.Call{}, fmt.Errorf("resolve did routing: %w", err)
+	}
+	if decision.BotID == "" {
+		logger.Info("inbound: no matching route, hanging up", "reason", decision.Reason)
 		return store.Call{}, ErrNoBotAssigned
 	}
-	logger = logger.With("tenant", route.TenantID, "bot", route.BotID)
+	logger = logger.With("bot", decision.BotID, "routing_reason", decision.Reason)
+	if decision.MatchedRule != "" {
+		logger.Info("inbound: matched routing rule", "rule", decision.MatchedRule)
+	}
 
-	bot, err := st.GetBot(ctx, route.TenantID, route.BotID)
+	bot, err := st.GetBot(ctx, route.TenantID, decision.BotID)
 	if err != nil {
 		return store.Call{}, fmt.Errorf("get bot: %w", err)
 	}
@@ -418,7 +435,7 @@ func handleInbound(
 		Outcome:   "pending",
 		ChannelID: chID,
 		StartedAt: &now,
-		Summary:   "Inbound call answered by " + route.BotName + ".",
+		Summary:   "Inbound call answered by " + bot.Name + " (routing: " + decision.Reason + ").",
 		Provider:  provider,
 	})
 	if err != nil {
@@ -431,13 +448,13 @@ func handleInbound(
 		return call, fmt.Errorf("voice-agent disabled")
 	}
 	creds := loadTenantVoiceCreds(ctx, st, route.TenantID, logger)
-	tools := loadBotTools(ctx, st, route.TenantID, route.BotID, logger)
+	tools := loadBotTools(ctx, st, route.TenantID, decision.BotID, logger)
 	vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	sess, err := va.CreateSession(vctx, voiceagent.Config{
 		CallID:      call.ID,
 		TenantID:    route.TenantID,
-		BotID:       route.BotID,
+		BotID:       decision.BotID,
 		Provider:    provider,
 		Objective:   bot.Objective,
 		Guardrails:  bot.Guardrails,

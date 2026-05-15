@@ -210,6 +210,44 @@ type BotToolInvocation struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
+// DIDRoutingRule controla qué bot atiende una llamada entrante a un
+// DID según condiciones (horario, días, prefijo del caller, idioma).
+// Las reglas se evalúan por priority ASC; la primera que matchea decide.
+// Si ninguna matchea, fallback al bot asignado al DID via bots.did_id.
+type DIDRoutingRule struct {
+	ID             string    `json:"id"`
+	TenantID       string    `json:"tenantId"`
+	DIDID          string    `json:"didId"`
+	Name           string    `json:"name"`
+	Priority       int       `json:"priority"`
+	Enabled        bool      `json:"enabled"`
+	Timezone       string    `json:"timezone"`
+	// Días de la semana. 0=Domingo .. 6=Sábado. Vacío = todos.
+	DaysOfWeek     []int     `json:"daysOfWeek"`
+	// Minuto del día en hora local [0..1439]. Ambos NULL = sin restricción.
+	StartMinute    *int      `json:"startMinute,omitempty"`
+	EndMinute      *int      `json:"endMinute,omitempty"`
+	CallerPrefixes []string  `json:"callerPrefixes"`
+	Language       string    `json:"language"`
+	TargetBotID    string    `json:"targetBotId"`
+	FallbackBotID  *string   `json:"fallbackBotId,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+	// Campos enriquecidos opcionales para la UI (nombre de bots).
+	TargetBotName   string `json:"targetBotName,omitempty"`
+	FallbackBotName string `json:"fallbackBotName,omitempty"`
+}
+
+// RoutingDecision es el resultado de Resolve(). Si MatchedRuleID es nil,
+// no hubo match y el caller debe usar el bot default del DID (o hangup).
+type RoutingDecision struct {
+	MatchedRuleID *string `json:"matchedRuleId,omitempty"`
+	MatchedRule   string  `json:"matchedRule,omitempty"`
+	BotID         string  `json:"botId,omitempty"`
+	// Razón para logging: "matched_rule" | "default_did_bot" | "no_route".
+	Reason string `json:"reason"`
+}
+
 // ScheduledMeeting es una cita creada por el bot vía
 // calendar_schedule_meeting. La persistimos local para validar
 // ownership cuando el lead pida cancelar o mover — sin esto cualquiera

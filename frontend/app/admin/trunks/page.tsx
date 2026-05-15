@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Server } from "lucide-react";
 import { useConfirm } from "../../../components/confirm";
+import { DIDRoutingPanel } from "../../../components/did-routing-panel";
 import { EmptyState } from "../../../components/empty";
 import { TableSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
@@ -27,6 +28,7 @@ export default function TrunksPage() {
   const [editingTrunk, setEditingTrunk] = useState<SIPTrunk | null>(null);
   const [didFormOpen, setDidFormOpen] = useState(false);
   const [editingDid, setEditingDid] = useState<DID | null>(null);
+  const [routingDid, setRoutingDid] = useState<DID | null>(null);
   const [sipState, setSipState] = useState<Record<string, EndpointState>>({});
   const [ariEnabled, setAriEnabled] = useState<boolean | null>(null);
   const toast = useToast();
@@ -295,6 +297,10 @@ export default function TrunksPage() {
             />
           ) : null}
 
+          {routingDid ? (
+            <DIDRoutingPanel did={routingDid} onClose={() => setRoutingDid(null)} />
+          ) : null}
+
           {dids.loading ? (
             <TableSkeleton cols={6} rows={5} />
           ) : didsData.length === 0 ? (
@@ -327,6 +333,7 @@ export default function TrunksPage() {
                       onAssign={(tenantId) => handleAssignDID(did.id, tenantId)}
                       onEdit={() => openDidForm(did)}
                       onDelete={() => handleDeleteDID(did.id)}
+                      onManageRouting={() => setRoutingDid(did)}
                     />
                   ))}
                 </tbody>
@@ -597,12 +604,14 @@ function DIDRow({
   onAssign,
   onEdit,
   onDelete,
+  onManageRouting,
 }: {
   did: DID;
   tenants: Tenant[];
   onAssign: (tenantId: string | null) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onManageRouting: () => void;
 }) {
   const t = useT();
   const statusLabel = useStatusLabel();
@@ -633,7 +642,15 @@ function DIDRow({
         <span className={statusClass(did.status)}>{statusLabel(did.status)}</span>
       </td>
       <td>
-        <button className="button ghost compact" onClick={onEdit}>
+        <button
+          className="button ghost compact"
+          onClick={onManageRouting}
+          disabled={!did.tenantId}
+          title={!did.tenantId ? t("admin.trunks.routing.notenant") : undefined}
+        >
+          {t("admin.trunks.routing.btn.manage")}
+        </button>
+        <button className="button ghost compact" style={{ marginLeft: 6 }} onClick={onEdit}>
           {t("admin.trunks.btn.edit")}
         </button>
         <button className="button ghost compact" style={{ marginLeft: 6 }} onClick={onDelete}>

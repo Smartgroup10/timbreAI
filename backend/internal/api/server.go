@@ -199,6 +199,12 @@ func (s *Server) Handler() http.Handler {
 	// Callback público — Google redirige aquí, valida con state firmado.
 	mux.HandleFunc("GET /api/calendar/google/callback", s.handleCalendarCallback)
 
+	// DID routing rules — solo platform_admin (admin de la plataforma).
+	mux.HandleFunc("GET /api/admin/dids/{didId}/routing-rules", s.requireRole("platform_admin", s.handleListDIDRoutingRules))
+	mux.HandleFunc("POST /api/admin/dids/{didId}/routing-rules", s.requireRole("platform_admin",s.handleCreateDIDRoutingRule))
+	mux.HandleFunc("PATCH /api/admin/dids/{didId}/routing-rules/{ruleId}", s.requireRole("platform_admin",s.handleUpdateDIDRoutingRule))
+	mux.HandleFunc("DELETE /api/admin/dids/{didId}/routing-rules/{ruleId}", s.requireRole("platform_admin",s.handleDeleteDIDRoutingRule))
+
 	// Platform-admin only
 	mux.HandleFunc("GET /api/admin/tenants", s.requireRole("platform_admin", s.handleTenants))
 	mux.HandleFunc("POST /api/admin/tenants", s.requireRole("platform_admin", s.handleAdminCreateTenant))

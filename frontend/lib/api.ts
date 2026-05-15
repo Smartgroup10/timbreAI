@@ -99,6 +99,41 @@ export type DID = {
   createdAt: string;
 };
 
+export type DIDRoutingRule = {
+  id: string;
+  tenantId: string;
+  didId: string;
+  name: string;
+  priority: number;
+  enabled: boolean;
+  timezone: string;
+  daysOfWeek: number[];
+  startMinute?: number | null;
+  endMinute?: number | null;
+  callerPrefixes: string[];
+  language: string;
+  targetBotId: string;
+  targetBotName?: string;
+  fallbackBotId?: string | null;
+  fallbackBotName?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DIDRoutingRuleInput = {
+  name: string;
+  priority?: number;
+  enabled?: boolean;
+  timezone: string;
+  daysOfWeek: number[];
+  startMinute?: number | null;
+  endMinute?: number | null;
+  callerPrefixes: string[];
+  language: string;
+  targetBotId: string;
+  fallbackBotId?: string | null;
+};
+
 export type DoNotCallEntry = {
   id: string;
   tenantId: string;
@@ -705,6 +740,21 @@ export const api = {
   adminAssignDID: (id: string, tenantId: string | null) =>
     request<void>("PATCH", `/api/admin/dids/${encodeURIComponent(id)}/assign`, { tenantId }),
   adminDeleteDID: (id: string) => request<void>("DELETE", `/api/admin/dids/${encodeURIComponent(id)}`),
+  adminDIDRoutingRules: (didId: string) =>
+    request<DIDRoutingRule[]>("GET", `/api/admin/dids/${encodeURIComponent(didId)}/routing-rules`),
+  adminCreateDIDRoutingRule: (didId: string, input: DIDRoutingRuleInput) =>
+    request<DIDRoutingRule>("POST", `/api/admin/dids/${encodeURIComponent(didId)}/routing-rules`, input),
+  adminUpdateDIDRoutingRule: (didId: string, ruleId: string, input: DIDRoutingRuleInput) =>
+    request<DIDRoutingRule>(
+      "PATCH",
+      `/api/admin/dids/${encodeURIComponent(didId)}/routing-rules/${encodeURIComponent(ruleId)}`,
+      input,
+    ),
+  adminDeleteDIDRoutingRule: (didId: string, ruleId: string) =>
+    request<void>(
+      "DELETE",
+      `/api/admin/dids/${encodeURIComponent(didId)}/routing-rules/${encodeURIComponent(ruleId)}`,
+    ),
   adminAudit: (tenantFilter?: string) =>
     request<AuditLogEntry[]>("GET", tenantFilter ? `/api/admin/audit?tenant=${encodeURIComponent(tenantFilter)}` : "/api/admin/audit"),
 };
