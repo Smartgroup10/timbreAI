@@ -46,6 +46,16 @@ type Config struct {
 	// las pasa al provider en la negociación inicial; cuando el provider
 	// emite un function_call, el voice-agent llama a /api/internal/voice/tool-invoke.
 	Tools []Tool `json:"tools,omitempty"`
+
+	// AMD (Answering Machine Detection) — config tomada del bot.
+	AMD AMDConfig `json:"amd,omitempty"`
+}
+
+// AMDConfig configura el detector de buzón del voice-agent.
+type AMDConfig struct {
+	Enabled bool   `json:"enabled,omitempty"`
+	Action  string `json:"action,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // Tool es la definición que se envía al provider de voz para function

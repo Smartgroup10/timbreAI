@@ -282,6 +282,11 @@ function BotEditor({
   const [objective, setObjective] = useState(bot?.objective ?? "");
   const [guardrails, setGuardrails] = useState((bot?.guardrails ?? []).join("\n"));
   const [voiceProvider, setVoiceProvider] = useState(bot?.voiceProvider ?? "echo");
+  const [amdEnabled, setAmdEnabled] = useState(bot?.amdEnabled ?? false);
+  const [amdAction, setAmdAction] = useState<"hangup" | "drop_message" | "continue">(
+    (bot?.amdAction as "hangup" | "drop_message" | "continue") ?? "hangup",
+  );
+  const [voicemailMessage, setVoicemailMessage] = useState(bot?.voicemailMessage ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   // Catálogo estático de providers/voces (servido por backend) + qué providers
@@ -349,7 +354,11 @@ function BotEditor({
       .filter(Boolean);
     setSubmitting(true);
     try {
-      const payload = { name, type, language, voice, status, objective, voiceProvider, guardrails: guardrailsArray };
+      const payload = {
+        name, type, language, voice, status, objective, voiceProvider,
+        guardrails: guardrailsArray,
+        amdEnabled, amdAction, voicemailMessage,
+      };
       if (mode === "create") {
         await api.createBot(payload, tenant);
       } else if (bot) {
@@ -479,6 +488,50 @@ function BotEditor({
               placeholder={t("bots.editor.guardrails.placeholder")}
             />
           </div>
+
+          <div className="field" style={{ borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: 12, marginTop: 4 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={amdEnabled}
+                onChange={(e) => setAmdEnabled(e.target.checked)}
+              />
+              {t("bots.editor.amd.enabled")}
+            </label>
+            <p className="subtle" style={{ fontSize: 12, marginTop: 4 }}>
+              {t("bots.editor.amd.hint")}
+            </p>
+          </div>
+          {amdEnabled ? (
+            <>
+              <div className="field">
+                <label>{t("bots.editor.amd.action")}</label>
+                <select
+                  value={amdAction}
+                  onChange={(e) => setAmdAction(e.target.value as "hangup" | "drop_message" | "continue")}
+                >
+                  <option value="hangup">{t("bots.editor.amd.action.hangup")}</option>
+                  <option value="drop_message">{t("bots.editor.amd.action.drop_message")}</option>
+                  <option value="continue">{t("bots.editor.amd.action.continue")}</option>
+                </select>
+              </div>
+              {amdAction === "drop_message" ? (
+                <div className="field">
+                  <label>{t("bots.editor.amd.voicemail_message")}</label>
+                  <textarea
+                    value={voicemailMessage}
+                    onChange={(e) => setVoicemailMessage(e.target.value)}
+                    placeholder={t("bots.editor.amd.voicemail_message.placeholder")}
+                    rows={3}
+                  />
+                  <p className="subtle" style={{ fontSize: 12, marginTop: 4 }}>
+                    {t("bots.editor.amd.voicemail_message.hint")}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
           <button className="button" disabled={submitting}>
             {submitting ? t("bots.editor.submit.creating") : mode === "create" ? t("bots.editor.submit.create") : t("bots.editor.submit.save")}
           </button>

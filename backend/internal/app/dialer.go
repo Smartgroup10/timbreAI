@@ -132,13 +132,18 @@ func DialCall(ctx context.Context, d DialDeps, call store.Call, botID string) (D
 			TenantID:    call.TenantID,
 			BotID:       botID,
 			Provider:    provider,
-			Objective:   bot.Objective,
+			Objective:   amdAugmentObjective(bot.Objective, bot.AMDEnabled, bot.AMDAction, bot.VoicemailMessage),
 			Guardrails:  bot.Guardrails,
 			Language:    bot.Language,
 			Voice:       bot.Voice,
 			LeadName:    call.LeadName,
 			Credentials: creds,
 			Tools:       tools,
+			AMD: voiceagent.AMDConfig{
+				Enabled: bot.AMDEnabled,
+				Action:  bot.AMDAction,
+				Message: bot.VoicemailMessage,
+			},
 		})
 		cancel()
 		if err != nil {

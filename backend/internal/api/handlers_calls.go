@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"timbre/backend/internal/store"
 )
@@ -103,6 +105,69 @@ func (s *Server) requireInternalSecret(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
+}
+
+// handleInternalAMDResult recibe del voice-agent el veredicto del detector
+// AMD. Persiste calls.amd_result y, si la config del bot es amd_action=hangup,
+// cierra la sesión vía DELETE /sessions/{id} del voice-agent.
+//
+// drop_message: se marca voicemail_dropped=true preventivamente — el LLM
+// tendrá instrucciones extra (system) para soltar el mensaje cuando lo
+// reconozca. Si el resultado es human o unknown no actuamos.
+func (s *Server) handleInternalAMDResult(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		SessionID string `json:"sessionId"`
+		BotID     string `json:"botId"`
+		Result    string `json:"result"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	if input.SessionID == "" || input.Result == "" {
+		writeError(w, http.StatusBadRequest, "session_and_result_required")
+		return
+	}
+	// La call enlazada nos da el id para persistir. Si todavía no se ha
+	// linkado el voice_session_id (race muy corto al inicio), aceptamos
+	// igualmente y solo loggeamos.
+	call, err := s.store.FindCallByVoiceSession(r.Context(), input.SessionID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "lookup_failed")
+		return
+	}
+	// Recuperamos el bot (por botId del payload) para decidir la acción.
+	var voicemailDropped bool
+	var action string
+	if input.BotID != "" {
+		if bot, err := s.store.GetBotByID(r.Context(), input.BotID); err == nil {
+			action = bot.AMDAction
+			if input.Result == "machine" && action == "drop_message" && bot.VoicemailMessage != "" {
+				voicemailDropped = true
+			}
+		}
+	}
+	if err := s.store.UpdateCallAMD(r.Context(), call.ID, input.Result, voicemailDropped); err != nil {
+		s.logger.Error("amd persist", "call", call.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "persist_failed")
+		return
+	}
+	// Si action=hangup y detectamos machine: cerrar sesión del voice-agent
+	// (provoca también el cierre del Stasis bridge desde el lado del bot).
+	if input.Result == "machine" && action == "hangup" && s.voiceAgent != nil && s.voiceAgent.Enabled() {
+		go func(sessionID string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.voiceAgent.EndSession(ctx, sessionID); err != nil {
+				s.logger.Warn("amd hangup end session", "session", sessionID, "error", err)
+			}
+		}(input.SessionID)
+	}
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (s *Server) handleInternalTranscript(w http.ResponseWriter, r *http.Request) {

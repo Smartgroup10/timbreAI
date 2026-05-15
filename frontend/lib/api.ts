@@ -68,6 +68,10 @@ export type Bot = {
   didId?: string | null;
   didE164?: string;
   trunkId?: string;
+  // AMD (Answering Machine Detection)
+  amdEnabled?: boolean;
+  amdAction?: "hangup" | "drop_message" | "continue";
+  voicemailMessage?: string;
 };
 
 export type SIPTrunk = {
@@ -97,6 +101,45 @@ export type DID = {
   label: string;
   status: string;
   createdAt: string;
+};
+
+export type BillingSummaryRow = {
+  day: string;
+  bucketId: string;
+  bucketLabel: string;
+  calls: number;
+  durationSec: number;
+  totalMicroCents: number;
+};
+
+export type BillingSummary = {
+  from: string;
+  to: string;
+  groupBy: string;
+  rows: BillingSummaryRow[];
+  totalCalls: number;
+  totalDurationSec: number;
+  totalMicroCents: number;
+};
+
+export type CallUsage = {
+  callId: string;
+  tenantId: string;
+  provider: string;
+  durationSec: number;
+  sttSeconds: number;
+  llmInputTokens: number;
+  llmOutputTokens: number;
+  ttsChars: number;
+  ttsSeconds: number;
+  sttMicroCents: number;
+  llmMicroCents: number;
+  ttsMicroCents: number;
+  trunkMicroCents: number;
+  otherMicroCents: number;
+  totalMicroCents: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type DIDRoutingRule = {
@@ -755,6 +798,20 @@ export const api = {
       "DELETE",
       `/api/admin/dids/${encodeURIComponent(didId)}/routing-rules/${encodeURIComponent(ruleId)}`,
     ),
+  billingSummary: (params?: { from?: string; to?: string; groupBy?: string; tenantOverride?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    if (params?.groupBy) qs.set("groupBy", params.groupBy);
+    const sep = qs.toString() ? `?${qs.toString()}` : "";
+    return request<BillingSummary>(
+      "GET",
+      withTenant(`/api/billing/summary${sep}`, params?.tenantOverride),
+    );
+  },
+  billingCall: (callId: string, tenantOverride?: string) =>
+    request<CallUsage>("GET", withTenant(`/api/billing/calls/${encodeURIComponent(callId)}`, tenantOverride)),
+
   adminAudit: (tenantFilter?: string) =>
     request<AuditLogEntry[]>("GET", tenantFilter ? `/api/admin/audit?tenant=${encodeURIComponent(tenantFilter)}` : "/api/admin/audit"),
 };
@@ -796,6 +853,17 @@ export function formatCostCents(cents: number | undefined): string {
   if (cents === undefined || cents === null) return "—";
   if (cents === 0) return "—";
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+// formatMicroCents convierte micro-céntimos (1e-6 USD) a una string en USD.
+// El backend persiste con esa granularidad para que las sumas grandes no
+// pierdan precisión por redondeo. 10_000 μ¢ = 1 cent.
+export function formatMicroCents(micro: number | undefined): string {
+  if (micro === undefined || micro === null) return "—";
+  if (micro <= 0) return "—";
+  const dollars = micro / 1_000_000;
+  if (dollars < 0.01) return `<$0.01`;
+  return `$${dollars.toFixed(2)}`;
 }
 
 export function statusClass(status: string) {

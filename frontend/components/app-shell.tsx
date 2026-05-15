@@ -14,6 +14,7 @@ import {
   Mic,
   PhoneCall,
   PhoneOff,
+  Receipt,
   Server,
   Settings,
   ShieldAlert,
@@ -40,6 +41,7 @@ const portalLinks: NavItem[] = [
   { icon: Mic, labelKey: "nav.recordings", href: "/portal/recordings" },
   { icon: PhoneOff, labelKey: "nav.dnc", href: "/portal/do-not-call" },
   { icon: ClipboardList, labelKey: "nav.audit", href: "/portal/audit" },
+  { icon: Receipt, labelKey: "nav.billing", href: "/portal/billing" },
   { icon: Settings, labelKey: "nav.settings", href: "/portal/settings" },
 ];
 

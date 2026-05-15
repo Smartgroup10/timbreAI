@@ -186,6 +186,9 @@ func (s *Server) readLoop(ctx context.Context, conn net.Conn, sess *session.Sess
 				return
 			}
 			pktTotal++
+			// Tap AMD antes de empujar al provider. Es no-op si AMD está
+			// deshabilitado o ya emitió veredicto, así que no penaliza.
+			sess.ObserveInbound(payload)
 			select {
 			case sess.AudioIn <- payload:
 				forwarded++

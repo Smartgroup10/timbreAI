@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -24,6 +25,7 @@ type Server struct {
 	voiceAgent *voiceagent.Client
 	storage    *storage.Client
 	pricing    *pricing.Table
+	detailed   *pricing.Detailed // tarifas detalladas para call_usage
 	webhooks   *outwebhook.Dispatcher
 	realtime   *realtime.Hub
 	kb         *kb.Service
@@ -40,6 +42,7 @@ func New(cfg config.Config, st *store.Store, ariClient *ari.Client, va *voiceage
 		voiceAgent: va,
 		storage:    storeClient,
 		pricing:    pricing.NewTable(),
+		detailed:   loadDetailedPricing(st, logger),
 		webhooks:   outwebhook.New(st, logger.With("component", "outwebhook"), 4, 1024),
 		realtime:   realtime.NewHub(logger.With("component", "realtime")),
 		kb:         kb.NewService(st, logger.With("component", "kb")),
@@ -52,6 +55,30 @@ func New(cfg config.Config, st *store.Store, ariClient *ari.Client, va *voiceage
 		// 1 token per second, burst of 10 => allows brief bursts but blocks brute-force.
 		loginRate: newRateLimiter(time.Second, 10),
 	}
+}
+
+// loadDetailedPricing carga las tarifas detalladas desde provider_rates
+// al arrancar. Si la query falla o la tabla está vacía, devolvemos un
+// Detailed con map vacío — los handlers caen a pricing.Table como
+// fallback. No bloqueamos el boot por esto.
+func loadDetailedPricing(st *store.Store, logger *slog.Logger) *pricing.Detailed {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rows, err := st.ListProviderRates(ctx)
+	if err != nil {
+		logger.Warn("detailed pricing load failed, using defaults", "error", err)
+		return pricing.NewDetailed(nil)
+	}
+	entries := make([]pricing.DetailedEntry, 0, len(rows))
+	for _, r := range rows {
+		entries = append(entries, pricing.DetailedEntry{
+			Provider:          r.Provider,
+			Component:         r.Component,
+			Unit:              r.Unit,
+			MicroCentsPerUnit: r.MicroCentsPerUnit,
+		})
+	}
+	return pricing.NewDetailed(entries)
 }
 
 // withCost rellena CostCents y devuelve la lista. Helper para inyectar el
@@ -167,6 +194,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/internal/voice/transcripts", s.requireInternalSecret(s.handleInternalTranscript))
 	mux.HandleFunc("POST /api/internal/voice/recordings", s.requireInternalSecret(s.handleInternalRecording))
 	mux.HandleFunc("POST /api/internal/voice/tool-invoke", s.requireInternalSecret(s.handleInternalToolInvoke))
+	mux.HandleFunc("POST /api/internal/voice/amd-result", s.requireInternalSecret(s.handleInternalAMDResult))
+	mux.HandleFunc("POST /api/internal/voice/usage", s.requireInternalSecret(s.handleInternalUsage))
+
+	// Billing — coste real por llamada y dashboard agregado.
+	mux.HandleFunc("GET /api/billing/summary", s.requireAuth(s.handleBillingSummary))
+	mux.HandleFunc("GET /api/billing/calls/{id}", s.requireAuth(s.handleBillingCall))
 
 	mux.HandleFunc("GET /api/analytics", s.requireAuth(s.handleAnalytics))
 	mux.HandleFunc("GET /api/pricing", s.requireAuth(s.handlePricing))

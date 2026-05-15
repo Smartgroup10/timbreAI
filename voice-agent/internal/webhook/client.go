@@ -62,6 +62,81 @@ func (c *Client) PostTranscript(ctx context.Context, in TranscriptInput) {
 	}
 }
 
+// AMDResultInput informa al backend del veredicto del detector de buzón.
+// El backend persiste calls.amd_result y decide si cerrar la sesión
+// (action=hangup) o solo marcarla (action=drop_message/continue).
+type AMDResultInput struct {
+	SessionID string `json:"sessionId"`
+	BotID     string `json:"botId,omitempty"`
+	Result    string `json:"result"` // "human" | "machine" | "unknown"
+}
+
+// UsageInput informa al backend del consumo de la sesión al cerrar.
+// Los contadores por componente (tokens, chars) se rellenan cuando
+// instrumentemos cada provider; por ahora reportamos DurationSec que
+// el backend ya usa de fallback con tarifa flat.
+type UsageInput struct {
+	SessionID       string `json:"sessionId"`
+	DurationSec     int    `json:"durationSec"`
+	STTSeconds      int    `json:"sttSeconds,omitempty"`
+	LLMInputTokens  int    `json:"llmInputTokens,omitempty"`
+	LLMOutputTokens int    `json:"llmOutputTokens,omitempty"`
+	TTSChars        int    `json:"ttsChars,omitempty"`
+	TTSSeconds      int    `json:"ttsSeconds,omitempty"`
+}
+
+// PostUsage reporta los contadores de consumo al backend al cerrar la
+// sesión. Fire-and-forget — fallar aquí no rompe la llamada ya cerrada.
+func (c *Client) PostUsage(ctx context.Context, in UsageInput) {
+	if !c.Enabled() {
+		return
+	}
+	body, _ := json.Marshal(in)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url+"/api/internal/voice/usage", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.secret != "" {
+		req.Header.Set("X-Internal-Secret", c.secret)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		c.logger.Warn("usage webhook", "error", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode != 404 {
+		c.logger.Warn("usage webhook non-2xx", "status", resp.StatusCode)
+	}
+}
+
+// PostAMDResult notifica al backend el veredicto del AMD detector.
+// Fire-and-forget — si falla no rompe la llamada, solo perdemos el flag.
+func (c *Client) PostAMDResult(ctx context.Context, in AMDResultInput) {
+	if !c.Enabled() {
+		return
+	}
+	body, _ := json.Marshal(in)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url+"/api/internal/voice/amd-result", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.secret != "" {
+		req.Header.Set("X-Internal-Secret", c.secret)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		c.logger.Warn("amd webhook", "error", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode != 404 {
+		c.logger.Warn("amd webhook non-2xx", "status", resp.StatusCode)
+	}
+}
+
 // ToolInvokeInput es la petición que enviamos al backend cuando un provider
 // emite un function_call durante la llamada.
 type ToolInvokeInput struct {

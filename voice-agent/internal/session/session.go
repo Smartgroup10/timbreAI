@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"timbre/voice-agent/internal/amd"
 )
 
 // Event is the structured message exchanged with the WebSocket client.
@@ -40,6 +42,22 @@ type Config struct {
 	// invocación, el provider implementation llama a InvokeTool del
 	// session para que se ejecute via backend.
 	Tools []Tool `json:"tools,omitempty"`
+
+	// AMD (Answering Machine Detection). Si AMD.Enabled es true, el
+	// audiosocket alimenta un detector con los primeros segundos de audio
+	// y, según AMD.Action, decide si colgar o soltar un mensaje TTS.
+	AMD AMDConfig `json:"amd,omitempty"`
+}
+
+// AMDConfig es la configuración de detección de buzón para la sesión.
+// Action posibles:
+//   - "hangup"       — al detectar machine, cerrar sesión inmediatamente.
+//   - "drop_message" — recitar Message (TTS via provider) y cerrar.
+//   - "continue"     — solo registrar el resultado, no actuar (debug).
+type AMDConfig struct {
+	Enabled bool   `json:"enabled,omitempty"`
+	Action  string `json:"action,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // Tool es una function exponible al LLM. parameters es JSON Schema.
@@ -85,6 +103,11 @@ type Session struct {
 	onClose      func()
 	onTranscript func(sessionID, role, text string)
 	onToolInvoke func(ctx context.Context, sessionID, toolName string, args map[string]any) (content string, ok bool)
+	onAMDResult  func(sessionID string, result amd.Result)
+
+	amdDet      *amd.Detector // nil si AMD deshabilitado
+	amdResult   amd.Result    // último resultado conocido, "" si pending
+	amdNotified bool          // garantiza que onAMDResult corre una sola vez
 
 	// Last transcripts, for inspection via HTTP API.
 	transcript []TranscriptLine
@@ -98,16 +121,20 @@ type TranscriptLine struct {
 
 func New(id string, cfg Config) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Session{
+	s := &Session{
 		ID:        id,
 		Config:    cfg,
 		CreatedAt: time.Now().UTC(),
 		AudioIn:   make(chan []byte, 64),
-		AudioOut: make(chan []byte, 64),
-		Events:   make(chan Event, 64),
+		AudioOut:  make(chan []byte, 64),
+		Events:    make(chan Event, 64),
 		ctx:       ctx,
 		cancel:    cancel,
 	}
+	if cfg.AMD.Enabled {
+		s.amdDet = amd.New()
+	}
+	return s
 }
 
 func (s *Session) Context() context.Context { return s.ctx }
@@ -190,6 +217,57 @@ func (s *Session) InvokeTool(ctx context.Context, toolName string, args map[stri
 		return "Action unavailable.", false
 	}
 	return hook(ctx, s.ID, toolName, args)
+}
+
+// SetOnAMDResult instala el callback que se dispara cuando el detector
+// AMD emite un veredicto (human/machine/unknown). Solo se llama una vez.
+// El callback debe ser no-bloqueante; aquí se dispara en una goroutine.
+func (s *Session) SetOnAMDResult(fn func(sessionID string, result amd.Result)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onAMDResult = fn
+}
+
+// ObserveInbound se llama desde el audiosocket por cada frame de audio
+// recibido del caller. Si AMD está habilitado y todavía no ha decidido,
+// alimenta el detector. Cuando el detector llega a veredicto, dispara
+// el callback registrado.
+//
+// Mantenerla barata — corre en el read loop del audiosocket.
+func (s *Session) ObserveInbound(pcm []byte) {
+	s.mu.Lock()
+	det := s.amdDet
+	if det == nil || s.amdNotified {
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+
+	det.FeedPCM(pcm)
+	res, ok := det.Result()
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	if s.amdNotified {
+		s.mu.Unlock()
+		return
+	}
+	s.amdNotified = true
+	s.amdResult = res
+	hook := s.onAMDResult
+	s.mu.Unlock()
+	if hook != nil {
+		go hook(s.ID, res)
+	}
+}
+
+// AMDResult devuelve el último veredicto conocido del detector ("" si
+// todavía no decidió o si AMD estaba deshabilitado).
+func (s *Session) AMDResult() amd.Result {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.amdResult
 }
 
 func (s *Session) Snapshot() ([]TranscriptLine, time.Time, bool) {

@@ -134,3 +134,20 @@ func (s *Store) FindCallByVoiceSession(ctx context.Context, sessionID string) (C
 	}
 	return c, err
 }
+
+// UpdateCallAMD persiste el veredicto del detector AMD para una llamada.
+// El voice-agent lo reporta una vez por sesión. voicemailDropped es true
+// si el bot llegó a soltar el mensaje pre-grabado al buzón (futuro: hoy
+// se marca preventivamente al detectar machine cuando action=drop_message).
+func (s *Store) UpdateCallAMD(ctx context.Context, callID, result string, voicemailDropped bool) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE calls SET amd_result = $2, voicemail_dropped = $3
+		WHERE id = $1`, callID, result, voicemailDropped)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

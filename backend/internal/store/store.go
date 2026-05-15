@@ -232,7 +232,8 @@ func (s *Store) ListProperties(ctx context.Context, tenantID string) ([]Property
 func (s *Store) ListBots(ctx context.Context, tenantID string) ([]Bot, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT b.id, b.tenant_id, b.name, b.type, b.language, b.voice, b.status, b.objective, b.guardrails,
-		       b.voice_provider, b.did_id, COALESCE(d.e164, ''), COALESCE(d.trunk_id, '')
+		       b.voice_provider, b.did_id, COALESCE(d.e164, ''), COALESCE(d.trunk_id, ''),
+		       b.amd_enabled, b.amd_action, b.voicemail_message
 		FROM bots b
 		LEFT JOIN dids d ON d.id = b.did_id
 		WHERE b.tenant_id = $1
@@ -245,7 +246,8 @@ func (s *Store) ListBots(ctx context.Context, tenantID string) ([]Bot, error) {
 	for rows.Next() {
 		var b Bot
 		if err := rows.Scan(&b.ID, &b.TenantID, &b.Name, &b.Type, &b.Language, &b.Voice, &b.Status, &b.Objective, &b.Guardrails,
-			&b.VoiceProvider, &b.DIDID, &b.DIDE164, &b.TrunkID); err != nil {
+			&b.VoiceProvider, &b.DIDID, &b.DIDE164, &b.TrunkID,
+			&b.AMDEnabled, &b.AMDAction, &b.VoicemailMessage); err != nil {
 			return nil, err
 		}
 		out = append(out, b)
@@ -260,12 +262,14 @@ func (s *Store) GetBotByID(ctx context.Context, id string) (Bot, error) {
 	var b Bot
 	err := s.pool.QueryRow(ctx, `
 		SELECT b.id, b.tenant_id, b.name, b.type, b.language, b.voice, b.status, b.objective, b.guardrails,
-		       b.voice_provider, b.did_id, COALESCE(d.e164, ''), COALESCE(d.trunk_id, '')
+		       b.voice_provider, b.did_id, COALESCE(d.e164, ''), COALESCE(d.trunk_id, ''),
+		       b.amd_enabled, b.amd_action, b.voicemail_message
 		FROM bots b
 		LEFT JOIN dids d ON d.id = b.did_id
 		WHERE b.id = $1`, id).
 		Scan(&b.ID, &b.TenantID, &b.Name, &b.Type, &b.Language, &b.Voice, &b.Status, &b.Objective, &b.Guardrails,
-			&b.VoiceProvider, &b.DIDID, &b.DIDE164, &b.TrunkID)
+			&b.VoiceProvider, &b.DIDID, &b.DIDE164, &b.TrunkID,
+			&b.AMDEnabled, &b.AMDAction, &b.VoicemailMessage)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}
@@ -276,12 +280,14 @@ func (s *Store) GetBot(ctx context.Context, tenantID, id string) (Bot, error) {
 	var b Bot
 	err := s.pool.QueryRow(ctx, `
 		SELECT b.id, b.tenant_id, b.name, b.type, b.language, b.voice, b.status, b.objective, b.guardrails,
-		       b.voice_provider, b.did_id, COALESCE(d.e164, ''), COALESCE(d.trunk_id, '')
+		       b.voice_provider, b.did_id, COALESCE(d.e164, ''), COALESCE(d.trunk_id, ''),
+		       b.amd_enabled, b.amd_action, b.voicemail_message
 		FROM bots b
 		LEFT JOIN dids d ON d.id = b.did_id
 		WHERE b.tenant_id = $1 AND b.id = $2`, tenantID, id).
 		Scan(&b.ID, &b.TenantID, &b.Name, &b.Type, &b.Language, &b.Voice, &b.Status, &b.Objective, &b.Guardrails,
-			&b.VoiceProvider, &b.DIDID, &b.DIDE164, &b.TrunkID)
+			&b.VoiceProvider, &b.DIDID, &b.DIDE164, &b.TrunkID,
+			&b.AMDEnabled, &b.AMDAction, &b.VoicemailMessage)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}

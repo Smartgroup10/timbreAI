@@ -456,13 +456,18 @@ func handleInbound(
 		TenantID:    route.TenantID,
 		BotID:       decision.BotID,
 		Provider:    provider,
-		Objective:   bot.Objective,
+		Objective:   amdAugmentObjective(bot.Objective, bot.AMDEnabled, bot.AMDAction, bot.VoicemailMessage),
 		Guardrails:  bot.Guardrails,
 		Language:    bot.Language,
 		Voice:       bot.Voice,
 		LeadName:    leadName,
 		Credentials: creds,
 		Tools:       tools,
+		AMD: voiceagent.AMDConfig{
+			Enabled: bot.AMDEnabled,
+			Action:  bot.AMDAction,
+			Message: bot.VoicemailMessage,
+		},
 	})
 	if err != nil {
 		return call, fmt.Errorf("voice-agent create session: %w", err)

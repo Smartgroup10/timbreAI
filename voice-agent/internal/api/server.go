@@ -14,6 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"timbre/voice-agent/internal/amd"
 	"timbre/voice-agent/internal/config"
 	"timbre/voice-agent/internal/provider"
 	"timbre/voice-agent/internal/recording"
@@ -147,6 +148,33 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 				s.logger.Warn("tool invoke failed", "session", sessionID, "tool", toolName, "error", err)
 			}
 			return r.Content, r.Success
+		})
+		// AMD: cuando el detector emite veredicto avisamos al backend.
+		// El backend persiste calls.amd_result y, si amd_action=hangup,
+		// dispara DELETE /sessions/{id} para cerrar la sesión.
+		// Al cerrar la sesión, reportamos el consumo. Solo conocemos
+		// DurationSec con seguridad — el resto (tokens, chars) lo
+		// rellenará la futura instrumentación por provider.
+		startedAt := time.Now()
+		sessID := sess.ID
+		sess.SetOnClose(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			dur := int(time.Since(startedAt).Seconds())
+			s.webhook.PostUsage(ctx, webhook.UsageInput{
+				SessionID:   sessID,
+				DurationSec: dur,
+				STTSeconds:  dur, // asumimos que escuchamos toda la llamada
+			})
+		})
+		botID := cfg.BotID
+		sess.SetOnAMDResult(func(sessionID string, result amd.Result) {
+			s.logger.Info("amd verdict", "session", sessionID, "result", string(result))
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			s.webhook.PostAMDResult(ctx, webhook.AMDResultInput{
+				SessionID: sessionID, BotID: botID, Result: string(result),
+			})
 		})
 	}
 	s.registry.Add(sess)

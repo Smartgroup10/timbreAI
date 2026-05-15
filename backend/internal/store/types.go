@@ -59,6 +59,13 @@ type Bot struct {
 	DIDID         *string  `json:"didId,omitempty"`
 	DIDE164       string   `json:"didE164,omitempty"`
 	TrunkID       string   `json:"trunkId,omitempty"`
+
+	// AMD (Answering Machine Detection) — config por bot. Si AMDEnabled
+	// es true, el voice-agent corre el detector sobre los primeros segundos
+	// del audio. Según AMDAction se cuelga o se suelta un mensaje TTS.
+	AMDEnabled       bool   `json:"amdEnabled"`
+	AMDAction        string `json:"amdAction"` // hangup | drop_message | continue
+	VoicemailMessage string `json:"voicemailMessage"`
 }
 
 type SIPTrunk struct {
