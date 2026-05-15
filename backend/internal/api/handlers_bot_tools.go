@@ -20,12 +20,13 @@ import (
 // tipo nuevo aquí, añade también su rama en executeToolAction (en el
 // handler de invocación) Y en la constraint CHECK de la migration.
 var allowedActionTypes = map[string]bool{
-	"set_lead_outcome":  true,
-	"set_lead_status":   true,
-	"schedule_callback": true,
-	"webhook":           true,
-	"end_call":          true,
-	"transfer_human":    true,
+	"set_lead_outcome":      true,
+	"set_lead_status":       true,
+	"schedule_callback":     true,
+	"webhook":               true,
+	"end_call":              true,
+	"transfer_human":        true,
+	"search_knowledge_base": true,
 }
 
 type botToolInput struct {

@@ -19,8 +19,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"timbre/backend/internal/kb"
 	"timbre/backend/internal/store"
 )
 
@@ -189,6 +191,38 @@ func (s *Server) executeToolAction(ctx context.Context, call store.Call, tool st
 		url, _ := tool.ActionConfig["url"].(string)
 		go s.dispatchToolWebhook(url, call, tool, args)
 		return toolInvokeResult{Success: true, Content: "Action sent."}
+
+	case "search_knowledge_base":
+		// El LLM pasa la query en args.query. Buscamos top-K chunks en
+		// pgvector y devolvemos el texto concatenado como content — el
+		// LLM lo lee como output de la function y lo usa para responder.
+		query, _ := args["query"].(string)
+		if strings.TrimSpace(query) == "" {
+			return toolInvokeResult{Success: false, Error: "query_missing", Content: "Missing search query."}
+		}
+		// La API key OpenAI viene del tenant (pagamos sus embeddings, no los nuestros).
+		creds, err := s.store.GetVoiceCredentials(ctx, call.TenantID)
+		if err != nil || creds.OpenAIAPIKey == "" {
+			return toolInvokeResult{Success: false, Error: "no_openai_key",
+				Content: "Knowledge base unavailable: no OpenAI key configured."}
+		}
+		ec := kb.NewEmbeddingsClient(creds.OpenAIAPIKey)
+		hits, err := s.kb.Retrieve(ctx, call.TenantID, query, 3, ec)
+		if err != nil {
+			return toolInvokeResult{Success: false, Error: err.Error(), Content: "Search failed."}
+		}
+		if len(hits) == 0 {
+			return toolInvokeResult{Success: true, Content: "No relevant information found in the knowledge base."}
+		}
+		// Construimos el "content" como bloque de texto que el LLM puede
+		// leer directamente. Score primero por si en el futuro queremos
+		// que el LLM lo use para ranking interno.
+		var b strings.Builder
+		b.WriteString("Relevant excerpts from the knowledge base:\n\n")
+		for i, h := range hits {
+			fmt.Fprintf(&b, "[%d] from %q (score %.2f):\n%s\n\n", i+1, h.Document, h.Score, h.Chunk)
+		}
+		return toolInvokeResult{Success: true, Content: b.String()}
 	}
 
 	return toolInvokeResult{Success: false, Error: "unknown_action_type"}

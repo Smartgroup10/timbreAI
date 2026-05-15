@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector incluye Postgres 16 + extensión pgvector pre-compilada,
+    # necesaria para RAG (kb_chunks.embedding vector(1536)). Mismo data dir que
+    # postgres:16-alpine — restart-in-place sin perder datos.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-atrium_calls}

@@ -238,7 +238,8 @@ export type BotToolActionType =
   | "schedule_callback"
   | "webhook"
   | "end_call"
-  | "transfer_human";
+  | "transfer_human"
+  | "search_knowledge_base";
 
 export type BotTool = {
   id: string;
@@ -281,6 +282,25 @@ export type WebhookEndpointInput = {
   url: string;
   events: string[];
   active?: boolean;
+};
+
+export type KBDocument = {
+  id: string;
+  tenantId: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: "pending" | "processing" | "ready" | "failed";
+  error?: string;
+  chunkCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KBSearchHit = {
+  chunk: string;
+  document: string;
+  score: number;
 };
 
 export type WebhookDelivery = {
@@ -425,6 +445,37 @@ export const api = {
   webhookDeliveries: (tenantOverride?: string) =>
     request<WebhookDelivery[]>("GET", withTenant("/api/webhook-deliveries", tenantOverride)),
   webhookEvents: () => request<{ events: string[] }>("GET", "/api/webhook-events"),
+  kbDocuments: (tenantOverride?: string) =>
+    request<KBDocument[]>("GET", withTenant("/api/kb/documents", tenantOverride)),
+  uploadKBDocument: async (file: File, tenantOverride?: string): Promise<KBDocument> => {
+    // Multipart upload manual — request() asume JSON. Mantenemos JWT y
+    // tenant override en query string como el resto del cliente.
+    const fd = new FormData();
+    fd.append("file", file);
+    const url = withTenant("/api/kb/documents", tenantOverride);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const resp = await fetch(url, { method: "POST", headers, body: fd });
+    if (!resp.ok) {
+      let code = `http_${resp.status}`;
+      try {
+        const body = await resp.json();
+        code = body.error || code;
+      } catch {
+        /* keep generic */
+      }
+      throw new ApiError(resp.status, code);
+    }
+    return resp.json();
+  },
+  deleteKBDocument: (id: string, tenantOverride?: string) =>
+    request<void>("DELETE", withTenant(`/api/kb/documents/${id}`, tenantOverride)),
+  kbSearch: (q: string, tenantOverride?: string) =>
+    request<KBSearchHit[]>(
+      "GET",
+      withTenant(`/api/kb/search?q=${encodeURIComponent(q)}`, tenantOverride)
+    ),
   createLead: (input: Partial<Lead>, tenantOverride?: string) =>
     request<Lead>("POST", withTenant("/api/leads", tenantOverride), input),
   importLeads: (csv: string, tenantOverride?: string) =>

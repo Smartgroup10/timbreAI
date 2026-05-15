@@ -188,6 +188,43 @@ type BotToolInvocation struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
+// KBDocument representa un documento subido a la knowledge base del
+// tenant. El contenido original no se almacena después del chunking —
+// vive solo en disco del operador. Lo que persiste son los chunks +
+// embeddings (vector DB).
+type KBDocument struct {
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenantId"`
+	Name       string    `json:"name"`
+	MimeType   string    `json:"mimeType"`
+	SizeBytes  int64     `json:"sizeBytes"`
+	Status     string    `json:"status"` // pending / processing / ready / failed
+	Error      string    `json:"error,omitempty"`
+	ChunkCount int       `json:"chunkCount"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// KBChunk es un fragmento con embedding. Solo se usa para INSERT — el
+// search devuelve KBSearchHit con score.
+type KBChunk struct {
+	ID         string
+	TenantID   string
+	DocumentID string
+	ChunkIndex int
+	Content    string
+	Tokens     int
+	Embedding  []float32
+}
+
+// KBSearchHit es un chunk + su similitud con la query. Score = 1 - cosine_distance,
+// rango [0, 1] donde 1 es match perfecto.
+type KBSearchHit struct {
+	Chunk    string  `json:"chunk"`
+	Document string  `json:"document"`
+	Score    float64 `json:"score"`
+}
+
 // WebhookEndpoint es la suscripción de un tenant a un canal CRM. Se
 // dispara cuando suceden eventos del tipo listado en Events.
 type WebhookEndpoint struct {

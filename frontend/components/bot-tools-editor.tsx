@@ -30,6 +30,7 @@ const ACTION_TYPES: BotToolActionType[] = [
   "webhook",
   "end_call",
   "transfer_human",
+  "search_knowledge_base",
 ];
 
 type Props = {
@@ -237,15 +238,40 @@ function ToolForm({
   const [actionURL, setActionURL] = useState<string>(
     (initial?.actionConfig?.url as string) ?? ""
   );
+  // Para search_knowledge_base partimos de un schema realista con query:string
+  // requerido — sin eso el LLM no sabe qué argumento mandar.
+  const defaultSchemaFor = (a: BotToolActionType): Record<string, unknown> => {
+    if (a === "search_knowledge_base") {
+      return {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Natural-language question to retrieve from the knowledge base.",
+          },
+        },
+        required: ["query"],
+      };
+    }
+    return { type: "object", properties: {} };
+  };
   const [paramsText, setParamsText] = useState(
-    JSON.stringify(
-      initial?.parametersSchema ?? { type: "object", properties: {} },
-      null,
-      2
-    )
+    JSON.stringify(initial?.parametersSchema ?? defaultSchemaFor(initial?.actionType ?? "set_lead_outcome"), null, 2)
   );
   const [submitting, setSubmitting] = useState(false);
   const isEdit = Boolean(initial);
+
+  // Cuando el usuario cambia action_type (en create), reseteamos el
+  // schema al default del tipo si no lo ha editado. Heurística simple:
+  // si el text actual matchea EXACTAMENTE el default del tipo anterior
+  // lo consideramos "intacto" y lo sustituimos.
+  function handleActionTypeChange(next: BotToolActionType) {
+    const prevDefault = JSON.stringify(defaultSchemaFor(actionType), null, 2);
+    if (paramsText === prevDefault) {
+      setParamsText(JSON.stringify(defaultSchemaFor(next), null, 2));
+    }
+    setActionType(next);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -296,7 +322,7 @@ function ToolForm({
           <label>{t("tools.field.actiontype")}</label>
           <select
             value={actionType}
-            onChange={(e) => setActionType(e.target.value as BotToolActionType)}
+            onChange={(e) => handleActionTypeChange(e.target.value as BotToolActionType)}
             disabled={isEdit /* action_type es inmutable: ver backend */}
           >
             {ACTION_TYPES.map((a) => (
@@ -348,6 +374,11 @@ function ToolForm({
             required
           />
         </div>
+      ) : null}
+      {actionType === "search_knowledge_base" ? (
+        <p className="subtle" style={{ fontSize: 12.5, marginTop: 4 }}>
+          {t("tools.config.kb.hint")}
+        </p>
       ) : null}
 
       <details style={{ marginTop: 10 }}>

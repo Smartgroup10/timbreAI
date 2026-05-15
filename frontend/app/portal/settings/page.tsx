@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { KeyRound, Trash2, UserPlus } from "lucide-react";
 import { useConfirm } from "../../../components/confirm";
 import { useToast } from "../../../components/toast";
+import { KBPanel } from "../../../components/kb-panel";
 import { WebhooksPanel } from "../../../components/webhooks-panel";
 import { api, ApiError, TenantSettings, User, VoiceCredentials } from "../../../lib/api";
 import { useAuth, useTenantScope } from "../../../lib/auth-context";
@@ -126,6 +127,8 @@ export default function SettingsPage() {
       <VoiceCredentialsPanel tenant={tenant} canManage={user?.role === "tenant_admin" || user?.role === "platform_admin"} />
 
       <TeamPanel tenant={tenant} canManage={user?.role === "tenant_admin" || user?.role === "platform_admin"} currentUserId={user?.id} />
+
+      <KBPanel />
 
       <WebhooksPanel />
     </>
