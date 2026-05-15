@@ -8,7 +8,10 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/voice-agent ./cmd/voice-agent
 
 FROM alpine:3.20
-RUN adduser -D -H appuser && apk add --no-cache ca-certificates
+# ffmpeg encode WAV→OGG/Opus para grabaciones (~16x menos tamaño que WAV PCM).
+# ~12 MB extra en la imagen final, vale la pena vs ahorro de almacenamiento.
+# Si el binario no está, EncodeOpus hace fallback automático a WAV.
+RUN adduser -D -H appuser && apk add --no-cache ca-certificates ffmpeg
 USER appuser
 WORKDIR /app
 COPY --from=build /out/voice-agent /app/voice-agent

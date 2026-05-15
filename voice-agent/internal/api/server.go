@@ -230,20 +230,46 @@ func (s *Server) handleAudioWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(sess.Context())
 	defer cancel()
 
-	// Per-connection recorder. Tees both inbound and outbound audio into one mono WAV.
+	// Per-connection recorder. Tees both inbound and outbound audio into one mono WAV
+	// y al cerrar la sesión lo comprime con ffmpeg → OGG/Opus 24 kbps voip.
+	// PCM16 16 kHz mono = ~1.92 MB/min; Opus 24 kbps = ~180 KB/min (~10x menos).
+	// Si ffmpeg no está, fallback automático a WAV.
 	rec := recording.New(sess.ID, 16000)
 	defer func() {
-		wav := rec.WAV()
-		if wav == nil || s.cfg.BackendURL == "" {
+		if s.cfg.BackendURL == "" {
+			return
+		}
+		uploadCtx, ucancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer ucancel()
+
+		// Intentamos Opus primero; si ffmpeg no está, caemos a WAV.
+		body, contentType, err := rec.EncodeOpus(uploadCtx)
+		if err != nil && !errors.Is(err, recording.ErrNoFFmpeg) {
+			s.logger.Warn("recording opus encode failed, falling back to wav",
+				"session", sess.ID, "error", err)
+			body = nil
+		}
+		wavSize := 0
+		if body == nil {
+			body = rec.WAV()
+			contentType = "audio/wav"
+			wavSize = len(body)
+		} else {
+			wavSize = len(rec.Bytes()) + 44 // header WAV
+		}
+		if len(body) == 0 {
 			return
 		}
 		up := recording.NewUploader(s.cfg.BackendURL, s.cfg.BackendAuthKey)
-		uploadCtx, ucancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer ucancel()
-		if err := up.Upload(uploadCtx, sess.ID, wav); err != nil {
+		if err := up.Upload(uploadCtx, sess.ID, body, contentType); err != nil {
 			s.logger.Warn("recording upload", "session", sess.ID, "error", err)
 		} else {
-			s.logger.Info("recording uploaded", "session", sess.ID, "bytes", len(wav))
+			s.logger.Info("recording uploaded",
+				"session", sess.ID,
+				"format", contentType,
+				"bytes", len(body),
+				"raw_wav_bytes", wavSize,
+				"compression_ratio", fmtRatio(wavSize, len(body)))
 		}
 	}()
 
@@ -313,4 +339,13 @@ func newSessionID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// fmtRatio formatea WAV→Opus como "16.5x" para el log. Útil al revisar
+// si la compresión está dando el ahorro esperado por sesión.
+func fmtRatio(rawBytes, encodedBytes int) string {
+	if encodedBytes <= 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.1fx", float64(rawBytes)/float64(encodedBytes))
 }
