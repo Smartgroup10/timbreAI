@@ -116,11 +116,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/bots/{id}", s.requireAuth(s.handleUpdateBot))
 	mux.HandleFunc("DELETE /api/bots/{id}", s.requireAuth(s.handleDeleteBot))
 	mux.HandleFunc("POST /api/bots/{id}/did", s.requireAuth(s.handleAssignBotDID))
-	// Tools (function calling) por bot.
-	mux.HandleFunc("GET /api/bots/{id}/tools", s.requireAuth(s.handleListBotTools))
-	mux.HandleFunc("POST /api/bots/{id}/tools", s.requireAuth(s.handleCreateBotTool))
-	mux.HandleFunc("PATCH /api/bots/{id}/tools/{toolId}", s.requireAuth(s.handleUpdateBotTool))
-	mux.HandleFunc("DELETE /api/bots/{id}/tools/{toolId}", s.requireAuth(s.handleDeleteBotTool))
+
+	// Tools (function calling) — biblioteca por tenant.
+	mux.HandleFunc("GET /api/tools", s.requireAuth(s.handleListTools))
+	mux.HandleFunc("POST /api/tools", s.requireAuth(s.handleCreateTool))
+	mux.HandleFunc("PATCH /api/tools/{id}", s.requireAuth(s.handleUpdateTool))
+	mux.HandleFunc("DELETE /api/tools/{id}", s.requireAuth(s.handleDeleteTool))
+	// Asignaciones tool ↔ bot.
+	mux.HandleFunc("GET /api/bots/{id}/tools", s.requireAuth(s.handleListBotToolAssignments))
+	mux.HandleFunc("PUT /api/bots/{id}/tools/{toolId}", s.requireAuth(s.handleAssignToolToBot))
+	mux.HandleFunc("DELETE /api/bots/{id}/tools/{toolId}", s.requireAuth(s.handleUnassignToolFromBot))
 
 	mux.HandleFunc("GET /api/dids", s.requireAuth(s.handleTenantDIDs))
 

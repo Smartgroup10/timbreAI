@@ -82,7 +82,7 @@ func (s *Server) handleInternalToolInvoke(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "list_failed")
 		return
 	}
-	var tool *store.BotTool
+	var tool *store.Tool
 	for i := range tools {
 		if tools[i].Name == in.ToolName {
 			tool = &tools[i]
@@ -122,7 +122,7 @@ func (s *Server) resolveBotIDForCall(ctx context.Context, c store.Call) (string,
 
 // executeToolAction dispatcha por action_type. Cada rama es independiente
 // y devuelve el toolInvokeResult que se loguea y se manda al provider.
-func (s *Server) executeToolAction(ctx context.Context, call store.Call, tool store.BotTool, args map[string]any) toolInvokeResult {
+func (s *Server) executeToolAction(ctx context.Context, call store.Call, tool store.Tool, args map[string]any) toolInvokeResult {
 	switch tool.ActionType {
 
 	case "set_lead_outcome":
@@ -532,7 +532,7 @@ func (s *Server) executeToolAction(ctx context.Context, call store.Call, tool st
 // Fire-and-forget pero con timeout corto — no queremos goroutines colgadas
 // para siempre. El log lo hace la feature de outbound webhooks (siguiente
 // commit) con retries; aquí versión simple sin retry.
-func (s *Server) dispatchToolWebhook(url string, call store.Call, tool store.BotTool, args map[string]any) {
+func (s *Server) dispatchToolWebhook(url string, call store.Call, tool store.Tool, args map[string]any) {
 	if url == "" {
 		return
 	}

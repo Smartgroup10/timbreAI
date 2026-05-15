@@ -246,10 +246,10 @@ export type BotToolActionType =
   | "calendar_cancel_meeting"
   | "calendar_reschedule_meeting";
 
-export type BotTool = {
+/** Definición de tool en la biblioteca del tenant. */
+export type Tool = {
   id: string;
   tenantId: string;
-  botId: string;
   name: string;
   description: string;
   parametersSchema: Record<string, unknown>;
@@ -260,13 +260,19 @@ export type BotTool = {
   updatedAt: string;
 };
 
-export type BotToolInput = {
+export type ToolInput = {
   name: string;
   description: string;
   parametersSchema: Record<string, unknown>;
   actionType: BotToolActionType;
   actionConfig: Record<string, unknown>;
   enabled?: boolean;
+};
+
+/** Vista combinada para el editor del bot: la tool con su estado de asignación. */
+export type BotToolView = Tool & {
+  assigned: boolean;
+  assignedEnabled: boolean;
 };
 
 export type WebhookEndpoint = {
@@ -470,13 +476,21 @@ export const api = {
   analytics: (tenantOverride?: string) =>
     request<Analytics>("GET", withTenant("/api/analytics", tenantOverride)),
   pricing: () => request<PricingTable>("GET", "/api/pricing"),
-  botTools: (botId: string, tenantOverride?: string) =>
-    request<BotTool[]>("GET", withTenant(`/api/bots/${botId}/tools`, tenantOverride)),
-  createBotTool: (botId: string, input: BotToolInput, tenantOverride?: string) =>
-    request<BotTool>("POST", withTenant(`/api/bots/${botId}/tools`, tenantOverride), input),
-  updateBotTool: (botId: string, toolId: string, input: BotToolInput, tenantOverride?: string) =>
-    request<BotTool>("PATCH", withTenant(`/api/bots/${botId}/tools/${toolId}`, tenantOverride), input),
-  deleteBotTool: (botId: string, toolId: string, tenantOverride?: string) =>
+  // Biblioteca de tools por tenant (vive en /portal/tools).
+  tools: (tenantOverride?: string) =>
+    request<Tool[]>("GET", withTenant("/api/tools", tenantOverride)),
+  createTool: (input: ToolInput, tenantOverride?: string) =>
+    request<Tool>("POST", withTenant("/api/tools", tenantOverride), input),
+  updateTool: (id: string, input: ToolInput, tenantOverride?: string) =>
+    request<Tool>("PATCH", withTenant(`/api/tools/${id}`, tenantOverride), input),
+  deleteTool: (id: string, tenantOverride?: string) =>
+    request<void>("DELETE", withTenant(`/api/tools/${id}`, tenantOverride)),
+  // Asignaciones bot ↔ tool.
+  botToolAssignments: (botId: string, tenantOverride?: string) =>
+    request<BotToolView[]>("GET", withTenant(`/api/bots/${botId}/tools`, tenantOverride)),
+  assignToolToBot: (botId: string, toolId: string, enabled: boolean, tenantOverride?: string) =>
+    request<void>("PUT", withTenant(`/api/bots/${botId}/tools/${toolId}`, tenantOverride), { enabled }),
+  unassignToolFromBot: (botId: string, toolId: string, tenantOverride?: string) =>
     request<void>("DELETE", withTenant(`/api/bots/${botId}/tools/${toolId}`, tenantOverride)),
   webhooks: (tenantOverride?: string) =>
     request<WebhookEndpoint[]>("GET", withTenant("/api/webhooks", tenantOverride)),

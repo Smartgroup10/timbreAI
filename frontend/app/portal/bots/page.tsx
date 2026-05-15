@@ -5,7 +5,7 @@ import { Bot as BotIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import { useConfirm } from "../../../components/confirm";
 import { EmptyState } from "../../../components/empty";
 import { BotCalendarSection } from "../../../components/bot-calendar-section";
-import { BotToolsEditor } from "../../../components/bot-tools-editor";
+import { BotToolAssignments } from "../../../components/bot-tool-assignments";
 import { CardGridSkeleton } from "../../../components/skeleton";
 import { useToast } from "../../../components/toast";
 import { api, ApiError, Bot, DID, statusClass } from "../../../lib/api";
@@ -490,7 +490,7 @@ function BotEditor({
         {mode === "edit" && bot ? (
           <div className="drawer-body" style={{ paddingTop: 0 }}>
             <BotCalendarSection botId={bot.id} />
-            <BotToolsEditor botId={bot.id} />
+            <BotToolAssignments botId={bot.id} />
           </div>
         ) : (
           <div className="drawer-body" style={{ paddingTop: 0 }}>

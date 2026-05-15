@@ -154,15 +154,18 @@ type Overview struct {
 	QueuedCalls     int `json:"queuedCalls"`
 }
 
-// BotTool define una "function" que el LLM del bot puede invocar durante
-// una llamada (function calling / tool use). Cada provider de voz acepta
-// estas funciones en su Settings inicial. Cuando el LLM decide llamarla,
-// el voice-agent reenvía la petición al backend, que ejecuta el ActionType
-// correspondiente y devuelve el resultado al provider.
-type BotTool struct {
+// Tool define una "function" que el LLM puede invocar durante una llamada
+// (function calling / tool use). Vive como BIBLIOTECA por tenant — varios
+// bots pueden compartir la misma tool sin duplicar la definición.
+//
+// La activación por bot va en BotToolAssignment (bot_id, tool_id, enabled).
+// El campo Enabled en la propia Tool indica si la tool está "publicada"
+// (true) o "archivada" (false) en la biblioteca — si false, ya no la
+// puedes asignar a bots nuevos pero las asignaciones existentes siguen
+// vivas.
+type Tool struct {
 	ID               string         `json:"id"`
 	TenantID         string         `json:"tenantId"`
-	BotID            string         `json:"botId"`
 	Name             string         `json:"name"`        // "set_qualified", "schedule_visit"
 	Description      string         `json:"description"` // lo que lee el LLM para decidir cuándo llamar
 	ParametersSchema map[string]any `json:"parametersSchema"`
@@ -173,13 +176,32 @@ type BotTool struct {
 	UpdatedAt        time.Time      `json:"updatedAt"`
 }
 
+// BotToolAssignment registra que un bot usa una tool de la biblioteca.
+// Enabled aquí controla si la tool está activa PARA ESTE BOT (sin tener
+// que borrar la asignación).
+type BotToolAssignment struct {
+	BotID     string    `json:"botId"`
+	ToolID    string    `json:"toolId"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// BotToolView es la composición tool + estado de asignación para un bot.
+// Lo devuelve GET /api/bots/{id}/tools para que la UI pinte cada tool
+// con su switch enabled.
+type BotToolView struct {
+	Tool
+	Assigned        bool `json:"assigned"`
+	AssignedEnabled bool `json:"assignedEnabled"`
+}
+
 // BotToolInvocation registra cada vez que el LLM invocó una tool durante
 // una llamada — útil para auditar y debuggear comportamiento del bot.
 type BotToolInvocation struct {
 	ID        string         `json:"id"`
 	TenantID  string         `json:"tenantId"`
 	CallID    *string        `json:"callId,omitempty"`
-	BotToolID *string        `json:"botToolId,omitempty"`
+	ToolID    *string        `json:"toolId,omitempty"`
 	ToolName  string         `json:"toolName"`
 	Arguments map[string]any `json:"arguments"`
 	Result    map[string]any `json:"result"`

@@ -18,6 +18,7 @@ import {
   Settings,
   ShieldAlert,
   Users,
+  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -33,6 +34,7 @@ const portalLinks: NavItem[] = [
   { icon: Users, labelKey: "nav.leads", href: "/portal/leads" },
   { icon: Home, labelKey: "nav.properties", href: "/portal/properties" },
   { icon: Bot, labelKey: "nav.bots", href: "/portal/bots" },
+  { icon: Wrench, labelKey: "nav.tools", href: "/portal/tools" },
   { icon: Megaphone, labelKey: "nav.campaigns", href: "/portal/campaigns" },
   { icon: PhoneCall, labelKey: "nav.calls", href: "/portal/calls" },
   { icon: Mic, labelKey: "nav.recordings", href: "/portal/recordings" },
