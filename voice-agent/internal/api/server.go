@@ -234,7 +234,17 @@ func (s *Server) handleAudioWS(w http.ResponseWriter, r *http.Request) {
 	// y al cerrar la sesión lo comprime con ffmpeg → OGG/Opus 24 kbps voip.
 	// PCM16 16 kHz mono = ~1.92 MB/min; Opus 24 kbps = ~180 KB/min (~10x menos).
 	// Si ffmpeg no está, fallback automático a WAV.
+	//
+	// Backing por archivo temp en disco — antes acumulábamos en RAM con
+	// cap 20 MB y llamadas >10 min se truncaban silenciosamente. El
+	// archivo .pcm vive hasta rec.Close() en defer (corre DESPUÉS del
+	// upload, por orden LIFO).
 	rec := recording.New(sess.ID, 16000)
+	defer func() {
+		if err := rec.Close(); err != nil {
+			s.logger.Warn("recorder close", "session", sess.ID, "error", err)
+		}
+	}()
 	defer func() {
 		if s.cfg.BackendURL == "" {
 			return
@@ -249,13 +259,13 @@ func (s *Server) handleAudioWS(w http.ResponseWriter, r *http.Request) {
 				"session", sess.ID, "error", err)
 			body = nil
 		}
-		wavSize := 0
+		// El "raw_wav_bytes" del log es el tamaño que tendría el WAV
+		// equivalente (44 B header + PCM total). BytesWritten cuenta el
+		// PCM acumulado sin tener que volver a leer el archivo entero.
+		wavSize := int(rec.BytesWritten()) + 44
 		if body == nil {
 			body = rec.WAV()
 			contentType = "audio/wav"
-			wavSize = len(body)
-		} else {
-			wavSize = len(rec.Bytes()) + 44 // header WAV
 		}
 		if len(body) == 0 {
 			return

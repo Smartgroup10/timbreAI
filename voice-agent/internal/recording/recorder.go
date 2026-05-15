@@ -5,67 +5,147 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
 )
 
-// Recorder collects raw PCM16 audio for the duration of a session and uploads it as a single WAV
-// file at session close. Audio in (caller) and audio out (agent) are mixed into one mono track
-// by summing samples — fine for previewing; a real product would record stereo with each side on
-// its own channel.
+// Recorder collects raw PCM16 audio for the duration of a session and
+// uploads it as WAV/Opus at session close. Audio in (caller) y audio
+// out (agent) están ya mezclados en mono por el caller via Append.
+//
+// Backing: ARCHIVO TEMPORAL en disco. Antes acumulábamos en memoria con
+// cap 20 MB → llamadas >10 min se truncaban silenciosamente. Ahora
+// streamea a un .pcm temp y solo se carga a memoria en el momento de
+// codificar (Opus) o construir el WAV. Para una llamada de 1h a 16 kHz
+// mono PCM16 el archivo pesa ~115 MB en disco — barato.
+//
+// Si CreateTemp falla (disco lleno, permisos), caemos a un buffer en
+// memoria con el cap antiguo de 20 MB. Mejor degradación que perder
+// toda la grabación.
 type Recorder struct {
 	sessionID  string
-	mu         sync.Mutex
-	chunks     [][]byte
 	sampleRate int
+
+	mu           sync.Mutex
+	file         *os.File // backing en disco; nil si fallback a memoria
+	path         string   // path del temp para Close()
+	memoryBuf    []byte   // fallback si el archivo no se pudo crear
+	bytesWritten int64    // contador para metrics
+	closed       bool
 }
+
+// MemoryFallbackCap es el cap del buffer en memoria cuando el backing
+// por archivo no se pudo crear. Mismo umbral que el comportamiento viejo.
+const MemoryFallbackCap = 20 * 1024 * 1024
 
 func New(sessionID string, sampleRate int) *Recorder {
 	if sampleRate <= 0 {
 		sampleRate = 16000
 	}
-	return &Recorder{sessionID: sessionID, sampleRate: sampleRate}
+	r := &Recorder{sessionID: sessionID, sampleRate: sampleRate}
+	// os.CreateTemp con prefix identificable — facilita el cleanup
+	// manual si por alguna razón Close() no se llamó (kill -9, panic).
+	f, err := os.CreateTemp("", "timbre-rec-"+sessionID+"-*.pcm")
+	if err == nil {
+		r.file = f
+		r.path = f.Name()
+	}
+	// Sin file: r.memoryBuf actúa como fallback. Append lo respeta.
+	return r
 }
 
-// Append stores a chunk of PCM16 samples. Non-blocking, copies the slice so the caller can reuse
-// the buffer.
+// Append stores a chunk of PCM16 samples. Non-blocking, copia la slice
+// para que el caller pueda reusar el buffer.
+//
+// Errores de escritura a disco se logueanal final via stat() pero NO
+// propagamos el error — el caller (audio loop) no debe romperse por un
+// fallo de grabación. La grabación es secundaria a la llamada.
 func (r *Recorder) Append(buf []byte) {
 	if len(buf) == 0 {
 		return
 	}
-	c := make([]byte, len(buf))
-	copy(c, buf)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.chunks = append(r.chunks, c)
-	// Cap memory at ~20 MB (≈10 min @ 16kHz mono PCM16).
-	total := 0
-	for _, ch := range r.chunks {
-		total += len(ch)
+	if r.closed {
+		return // append después de Close() — ignorar.
 	}
-	for total > 20*1024*1024 && len(r.chunks) > 0 {
-		total -= len(r.chunks[0])
-		r.chunks = r.chunks[1:]
+	if r.file != nil {
+		n, err := r.file.Write(buf)
+		if err != nil {
+			// Disco lleno o I/O error. Cerramos el file y pasamos a
+			// fallback de memoria con cap pequeño — al menos
+			// preservamos los últimos segundos.
+			_ = r.file.Close()
+			_ = os.Remove(r.path)
+			r.file = nil
+			r.path = ""
+			return
+		}
+		r.bytesWritten += int64(n)
+		return
 	}
+	// Fallback en memoria con cap.
+	c := make([]byte, len(buf))
+	copy(c, buf)
+	r.memoryBuf = append(r.memoryBuf, c...)
+	if len(r.memoryBuf) > MemoryFallbackCap {
+		// Descartar inicio — preservamos el final (lo último que se dijo
+		// suele ser lo más útil: outcome, despedida).
+		excess := len(r.memoryBuf) - MemoryFallbackCap
+		r.memoryBuf = r.memoryBuf[excess:]
+	}
+	r.bytesWritten = int64(len(r.memoryBuf))
 }
 
+// Bytes devuelve TODO el PCM acumulado. Para llamadas largas esto
+// puede ser >100 MB en memoria temporalmente — solo lo usan los
+// encoders al cerrar sesión, no path caliente.
+//
+// Si el backing es archivo, hace io.ReadAll del file (que cerramos
+// abajo si era necesario para hacer seek). Si es memoria, copia el slice.
 func (r *Recorder) Bytes() []byte {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]byte, 0)
-	for _, c := range r.chunks {
-		out = append(out, c...)
+	return r.bytesLocked()
+}
+
+// bytesLocked es la versión interna que asume el lock tomado. Sirve a
+// WAV() para no doble-lockar.
+func (r *Recorder) bytesLocked() []byte {
+	if r.file != nil {
+		// Forzamos sync por si el SO no había flusheado al disco aún
+		// (poco probable a estas alturas, pero más vale).
+		_ = r.file.Sync()
+		// Seek al principio y leer todo. Si Seek o ReadAll fallan,
+		// retornamos nil — no podemos recuperarnos.
+		if _, err := r.file.Seek(0, io.SeekStart); err != nil {
+			return nil
+		}
+		data, err := io.ReadAll(r.file)
+		if err != nil {
+			return nil
+		}
+		return data
 	}
+	if len(r.memoryBuf) == 0 {
+		return nil
+	}
+	out := make([]byte, len(r.memoryBuf))
+	copy(out, r.memoryBuf)
 	return out
 }
 
 // WAV returns the recorded audio as a 16-bit PCM mono WAV blob. Returns nil if nothing was
 // recorded — callers should skip the upload in that case.
 func (r *Recorder) WAV() []byte {
-	pcm := r.Bytes()
+	r.mu.Lock()
+	pcm := r.bytesLocked()
+	r.mu.Unlock()
 	if len(pcm) == 0 {
 		return nil
 	}
@@ -77,17 +157,52 @@ func (r *Recorder) WAV() []byte {
 	binary.Write(&buf, binary.LittleEndian, chunkLen)
 	buf.WriteString("WAVE")
 	buf.WriteString("fmt ")
-	binary.Write(&buf, binary.LittleEndian, uint32(16))                // fmt chunk size
-	binary.Write(&buf, binary.LittleEndian, uint16(1))                 // PCM
-	binary.Write(&buf, binary.LittleEndian, uint16(1))                 // mono
-	binary.Write(&buf, binary.LittleEndian, uint32(r.sampleRate))      // sample rate
-	binary.Write(&buf, binary.LittleEndian, uint32(r.sampleRate*2))    // byte rate
-	binary.Write(&buf, binary.LittleEndian, uint16(2))                 // block align
-	binary.Write(&buf, binary.LittleEndian, uint16(16))                // bits per sample
+	binary.Write(&buf, binary.LittleEndian, uint32(16))             // fmt chunk size
+	binary.Write(&buf, binary.LittleEndian, uint16(1))              // PCM
+	binary.Write(&buf, binary.LittleEndian, uint16(1))              // mono
+	binary.Write(&buf, binary.LittleEndian, uint32(r.sampleRate))   // sample rate
+	binary.Write(&buf, binary.LittleEndian, uint32(r.sampleRate*2)) // byte rate
+	binary.Write(&buf, binary.LittleEndian, uint16(2))              // block align
+	binary.Write(&buf, binary.LittleEndian, uint16(16))             // bits per sample
 	buf.WriteString("data")
 	binary.Write(&buf, binary.LittleEndian, dataLen)
 	buf.Write(pcm)
 	return buf.Bytes()
+}
+
+// BytesWritten devuelve el total escrito (no afectado por seeks). Útil
+// para el log de duración estimada: bytes_written / 2 / sampleRate = seg.
+func (r *Recorder) BytesWritten() int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.bytesWritten
+}
+
+// Close cierra el archivo backing y lo borra. Idempotente. El caller
+// (handler de session) lo invoca en defer junto al upload — preferimos
+// no dejar archivos huérfanos en /tmp.
+func (r *Recorder) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return nil
+	}
+	r.closed = true
+	if r.file != nil {
+		closeErr := r.file.Close()
+		removeErr := os.Remove(r.path)
+		r.file = nil
+		r.path = ""
+		// Cerrar primero, borrar después; reportamos el primero que falla.
+		if closeErr != nil {
+			return fmt.Errorf("close temp: %w", closeErr)
+		}
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("remove temp: %w", removeErr)
+		}
+	}
+	r.memoryBuf = nil
+	return nil
 }
 
 // ErrNoFFmpeg se devuelve cuando ffmpeg no está disponible en PATH —
