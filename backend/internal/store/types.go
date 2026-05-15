@@ -188,6 +188,30 @@ type BotToolInvocation struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
+// ScheduledMeeting es una cita creada por el bot vía
+// calendar_schedule_meeting. La persistimos local para validar
+// ownership cuando el lead pida cancelar o mover — sin esto cualquiera
+// con el event_id podría tocar la cita de otro.
+type ScheduledMeeting struct {
+	ID              string    `json:"id"`
+	TenantID        string    `json:"tenantId"`
+	BotID           string    `json:"botId"`
+	LeadID          *string   `json:"leadId,omitempty"`
+	LeadPhone       string    `json:"leadPhone"`
+	Provider        string    `json:"provider"`
+	ProviderEventID string    `json:"providerEventId"`
+	CalendarID      string    `json:"calendarId"`
+	HTMLLink        string    `json:"htmlLink,omitempty"`
+	Title           string    `json:"title"`
+	StartAt         time.Time `json:"startAt"`
+	EndAt           time.Time `json:"endAt"`
+	AttendeeEmail   string    `json:"attendeeEmail,omitempty"`
+	Status          string    `json:"status"` // scheduled | cancelled
+	CreatedCallID   *string   `json:"createdCallId,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
 // BotCalendarIntegration es la conexión OAuth de un bot con Google
 // Calendar (otros providers en el futuro). Los tokens se guardan
 // cifrados y no se exponen al JSON de salida — el frontend solo ve

@@ -33,6 +33,9 @@ const ACTION_TYPES: BotToolActionType[] = [
   "search_knowledge_base",
   "calendar_check_availability",
   "calendar_schedule_meeting",
+  "calendar_list_my_meetings",
+  "calendar_cancel_meeting",
+  "calendar_reschedule_meeting",
 ];
 
 type Props = {
@@ -302,6 +305,49 @@ function ToolForm({
         required: ["start_time"],
       };
     }
+    if (a === "calendar_list_my_meetings") {
+      return {
+        type: "object",
+        properties: {
+          timezone: {
+            type: "string",
+            description: "IANA timezone to format times. Defaults to Europe/Madrid.",
+          },
+        },
+      };
+    }
+    if (a === "calendar_cancel_meeting") {
+      return {
+        type: "object",
+        properties: {
+          meeting_id: {
+            type: "string",
+            description: "Reference returned by calendar_list_my_meetings. Must belong to the current caller.",
+          },
+        },
+        required: ["meeting_id"],
+      };
+    }
+    if (a === "calendar_reschedule_meeting") {
+      return {
+        type: "object",
+        properties: {
+          meeting_id: {
+            type: "string",
+            description: "Reference returned by calendar_list_my_meetings. Must belong to the current caller.",
+          },
+          new_start_time: {
+            type: "string",
+            description: "New start in RFC3339 (e.g. 2025-06-12T18:00:00+02:00).",
+          },
+          duration_min: {
+            type: "integer",
+            description: "New duration in minutes. If omitted, keeps the original duration.",
+          },
+        },
+        required: ["meeting_id", "new_start_time"],
+      };
+    }
     return { type: "object", properties: {} };
   };
   const [paramsText, setParamsText] = useState(
@@ -432,6 +478,13 @@ function ToolForm({
       {actionType === "calendar_check_availability" || actionType === "calendar_schedule_meeting" ? (
         <p className="subtle" style={{ fontSize: 12.5, marginTop: 4 }}>
           {t("tools.config.cal.hint")}
+        </p>
+      ) : null}
+      {actionType === "calendar_list_my_meetings" ||
+      actionType === "calendar_cancel_meeting" ||
+      actionType === "calendar_reschedule_meeting" ? (
+        <p className="subtle" style={{ fontSize: 12.5, marginTop: 4 }}>
+          {t("tools.config.cal.manage.hint")}
         </p>
       ) : null}
 

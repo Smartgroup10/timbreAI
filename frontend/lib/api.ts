@@ -241,7 +241,10 @@ export type BotToolActionType =
   | "transfer_human"
   | "search_knowledge_base"
   | "calendar_check_availability"
-  | "calendar_schedule_meeting";
+  | "calendar_schedule_meeting"
+  | "calendar_list_my_meetings"
+  | "calendar_cancel_meeting"
+  | "calendar_reschedule_meeting";
 
 export type BotTool = {
   id: string;

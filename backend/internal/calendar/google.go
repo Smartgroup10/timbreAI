@@ -225,6 +225,67 @@ type CreateEventInput struct {
 	TimeZone      string // p.ej. "Europe/Madrid"; default "UTC"
 }
 
+// DeleteEvent cancela un evento. sendUpdates=all hace que Google
+// notifique al invitado (el lead) por email. La API devuelve 410 Gone
+// si el evento ya estaba eliminado — lo tratamos como éxito porque
+// el estado final es el deseado.
+func DeleteEvent(ctx context.Context, accessToken, calendarID, eventID string) error {
+	urlStr := fmt.Sprintf("https://www.googleapis.com/calendar/v3/calendars/%s/events/%s?sendUpdates=all",
+		url.PathEscape(calendarID), url.PathEscape(eventID))
+	req, err := http.NewRequestWithContext(ctx, "DELETE", urlStr, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 204 || resp.StatusCode == 200 || resp.StatusCode == 410 {
+		// 410 = ya cancelado o borrado; idempotente.
+		return nil
+	}
+	rb, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("google events.delete %d: %s", resp.StatusCode, string(rb))
+}
+
+// PatchEvent actualiza un evento. Para reschedule solo necesitamos
+// start y end — usamos PATCH (no PUT) para no tener que reenviar
+// todos los campos (summary, attendees, etc.).
+func PatchEvent(ctx context.Context, accessToken, calendarID, eventID string, newStart, newEnd time.Time, timezone string) (Event, error) {
+	if timezone == "" {
+		timezone = "UTC"
+	}
+	body := map[string]any{
+		"start": map[string]string{"dateTime": newStart.Format(time.RFC3339), "timeZone": timezone},
+		"end":   map[string]string{"dateTime": newEnd.Format(time.RFC3339), "timeZone": timezone},
+	}
+	raw, _ := json.Marshal(body)
+	urlStr := fmt.Sprintf("https://www.googleapis.com/calendar/v3/calendars/%s/events/%s?sendUpdates=all",
+		url.PathEscape(calendarID), url.PathEscape(eventID))
+	req, err := http.NewRequestWithContext(ctx, "PATCH", urlStr, bytes.NewReader(raw))
+	if err != nil {
+		return Event{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return Event{}, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return Event{}, fmt.Errorf("google events.patch %d: %s", resp.StatusCode, string(rb))
+	}
+	var ev Event
+	if err := json.Unmarshal(rb, &ev); err != nil {
+		return Event{}, err
+	}
+	return ev, nil
+}
+
 // CreateEvent inserta un evento. Si AttendeeEmail está, Google envía
 // automáticamente invitación email al lead (sendUpdates=all).
 func CreateEvent(ctx context.Context, accessToken string, in CreateEventInput) (Event, error) {

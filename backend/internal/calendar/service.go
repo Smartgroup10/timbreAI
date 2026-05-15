@@ -162,20 +162,24 @@ type ScheduleMeetingInput struct {
 // Schedule reserva un evento en el calendar del bot. Si el lead nos
 // dejó email durante la llamada, le llega invitación de Google
 // automáticamente — sendUpdates=all.
-func (s *Service) Schedule(ctx context.Context, tenantID, botID string, in ScheduleMeetingInput) (Event, error) {
+//
+// Devuelve también el calendarID resuelto desde la integración para
+// que el caller pueda persistirlo junto al event_id (necesario para
+// luego identificar el evento al cancel/reschedule).
+func (s *Service) Schedule(ctx context.Context, tenantID, botID string, in ScheduleMeetingInput) (Event, string, error) {
 	integ, err := s.store.GetBotCalendarIntegration(ctx, tenantID, botID, "google")
 	if err != nil {
-		return Event{}, err
+		return Event{}, "", err
 	}
 	accessToken, err := s.validAccessToken(ctx, integ)
 	if err != nil {
-		return Event{}, err
+		return Event{}, integ.CalendarID, err
 	}
 	if in.DurationMin <= 0 {
 		in.DurationMin = 30
 	}
 	end := in.Start.Add(time.Duration(in.DurationMin) * time.Minute)
-	return CreateEvent(ctx, accessToken, CreateEventInput{
+	ev, err := CreateEvent(ctx, accessToken, CreateEventInput{
 		CalendarID:    integ.CalendarID,
 		Summary:       in.Title,
 		Description:   in.Description,
@@ -184,4 +188,53 @@ func (s *Service) Schedule(ctx context.Context, tenantID, botID string, in Sched
 		AttendeeEmail: in.AttendeeEmail,
 		TimeZone:      in.TimeZone,
 	})
+	return ev, integ.CalendarID, err
+}
+
+// Cancel borra un evento del calendar. eventID y calendarID son los
+// que persistimos en scheduled_meetings al crear — el caller los pasa
+// después de validar ownership.
+//
+// Idempotente — un 410 de Google (ya borrado) cuenta como éxito.
+func (s *Service) Cancel(ctx context.Context, tenantID, botID, calendarID, eventID string) error {
+	integ, err := s.store.GetBotCalendarIntegration(ctx, tenantID, botID, "google")
+	if err != nil {
+		return err
+	}
+	accessToken, err := s.validAccessToken(ctx, integ)
+	if err != nil {
+		return err
+	}
+	if calendarID == "" {
+		calendarID = integ.CalendarID
+	}
+	return DeleteEvent(ctx, accessToken, calendarID, eventID)
+}
+
+// Reschedule mueve un evento existente. Mantiene attendees, título,
+// descripción — solo cambia start/end. duration se calcula desde
+// in.DurationMin o del start/end original si es 0.
+type RescheduleInput struct {
+	NewStart    time.Time
+	DurationMin int
+	TimeZone    string
+}
+
+func (s *Service) Reschedule(ctx context.Context, tenantID, botID, calendarID, eventID string, in RescheduleInput) (Event, error) {
+	integ, err := s.store.GetBotCalendarIntegration(ctx, tenantID, botID, "google")
+	if err != nil {
+		return Event{}, err
+	}
+	accessToken, err := s.validAccessToken(ctx, integ)
+	if err != nil {
+		return Event{}, err
+	}
+	if calendarID == "" {
+		calendarID = integ.CalendarID
+	}
+	if in.DurationMin <= 0 {
+		in.DurationMin = 30
+	}
+	end := in.NewStart.Add(time.Duration(in.DurationMin) * time.Minute)
+	return PatchEvent(ctx, accessToken, calendarID, eventID, in.NewStart, end, in.TimeZone)
 }

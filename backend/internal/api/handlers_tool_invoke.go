@@ -298,7 +298,7 @@ func (s *Server) executeToolAction(ctx context.Context, call store.Call, tool st
 		if tz == "" {
 			tz = "Europe/Madrid"
 		}
-		ev, err := s.calendar.Schedule(ctx, call.TenantID, botID, calendar.ScheduleMeetingInput{
+		ev, calendarID, err := s.calendar.Schedule(ctx, call.TenantID, botID, calendar.ScheduleMeetingInput{
 			Start:         start,
 			DurationMin:   int(duration),
 			Title:         title,
@@ -314,14 +314,183 @@ func (s *Server) executeToolAction(ctx context.Context, call store.Call, tool st
 			return toolInvokeResult{Success: false, Error: err.Error(),
 				Content: "Could not schedule the meeting."}
 		}
+		// Persistimos la cita LOCAL para luego identificarla en cancel/reschedule
+		// vía ownership (lead_id o lead_phone). Sin esto el LLM podría borrar
+		// la cita de otro lead con solo conocer un event_id ajeno.
+		endTime := start.Add(time.Duration(duration) * time.Minute)
+		meeting, err := s.store.CreateScheduledMeeting(ctx, store.ScheduledMeeting{
+			TenantID:        call.TenantID,
+			BotID:           botID,
+			LeadID:          call.LeadID,
+			LeadPhone:       call.Phone,
+			Provider:        "google",
+			ProviderEventID: ev.ID,
+			CalendarID:      calendarID,
+			HTMLLink:        ev.HTMLink,
+			Title:           title,
+			StartAt:         start,
+			EndAt:           endTime,
+			AttendeeEmail:   attendee,
+			CreatedCallID:   &call.ID,
+		})
+		if err != nil {
+			s.logger.Warn("persist scheduled meeting (event created in google anyway)",
+				"call", call.ID, "event", ev.ID, "error", err)
+		}
 		// Marcamos el lead callback + outcome para que aparezca en el funnel.
 		if call.LeadID != nil {
 			_ = s.store.UpdateLeadStatus(ctx, call.TenantID, *call.LeadID, "callback")
 		}
 		_ = s.store.UpdateCallOutcome(ctx, call.TenantID, call.ID, "callback")
+		// Devolvemos el meeting.ID al LLM para que pueda pasarlo a
+		// cancel_meeting / reschedule_meeting más tarde en la misma
+		// conversación si el lead cambia de opinión.
 		return toolInvokeResult{Success: true,
-			Content: fmt.Sprintf("Meeting scheduled for %s. Calendar link: %s",
-				start.In(time.UTC).Format(time.RFC3339), ev.HTMLink)}
+			Content: fmt.Sprintf("Meeting scheduled for %s. Meeting reference: %s. Calendar link: %s",
+				start.In(time.UTC).Format(time.RFC3339), meeting.ID, ev.HTMLink)}
+
+	case "calendar_list_my_meetings":
+		// Devuelve las citas FUTURAS del lead actual de la llamada.
+		// Identifica por lead_id (preferido) o lead_phone (fallback).
+		// El LLM la usa para responder "¿qué citas tengo?" o para
+		// resolver el meeting_id antes de cancelar/mover.
+		leadID := ""
+		if call.LeadID != nil {
+			leadID = *call.LeadID
+		}
+		meetings, err := s.store.ListScheduledMeetingsForLead(ctx, call.TenantID, leadID, call.Phone)
+		if err != nil {
+			return toolInvokeResult{Success: false, Error: err.Error(),
+				Content: "Could not list meetings."}
+		}
+		if len(meetings) == 0 {
+			return toolInvokeResult{Success: true,
+				Content: "No upcoming meetings on file for this caller."}
+		}
+		tz := "Europe/Madrid"
+		if t, _ := args["timezone"].(string); t != "" {
+			tz = t
+		}
+		loc, _ := time.LoadLocation(tz)
+		if loc == nil {
+			loc = time.UTC
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "Upcoming meetings for this caller:\n")
+		for i, m := range meetings {
+			fmt.Fprintf(&b, "[%d] %s — %s (duration %dmin) · reference: %s\n",
+				i+1,
+				m.Title,
+				m.StartAt.In(loc).Format("Mon 2006-01-02 15:04"),
+				int(m.EndAt.Sub(m.StartAt).Minutes()),
+				m.ID,
+			)
+		}
+		b.WriteString("\nTo cancel or reschedule pass the `reference` to the appropriate tool.")
+		return toolInvokeResult{Success: true, Content: b.String()}
+
+	case "calendar_cancel_meeting":
+		// Args: { meeting_id: string }
+		// CRÍTICO: el LLM puede pasar cualquier meeting_id; el backend
+		// valida ownership antes de tocar Google. Sin esto, conocer
+		// un meeting_id ajeno permitiría cancelar la cita de otro.
+		if s.calendar == nil || !s.calendar.Enabled() {
+			return toolInvokeResult{Success: false, Error: "calendar_not_configured",
+				Content: "Calendar service is not configured."}
+		}
+		meetingID, _ := args["meeting_id"].(string)
+		if strings.TrimSpace(meetingID) == "" {
+			return toolInvokeResult{Success: false, Error: "meeting_id_required",
+				Content: "Missing meeting_id. Call list_my_meetings first to get the reference."}
+		}
+		leadID := ""
+		if call.LeadID != nil {
+			leadID = *call.LeadID
+		}
+		// Ownership check — Get devuelve ErrNotFound si el meeting existe
+		// pero no pertenece al lead actual. Mensaje genérico.
+		meeting, err := s.store.GetScheduledMeetingForLead(ctx, call.TenantID, meetingID, leadID, call.Phone)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return toolInvokeResult{Success: false, Error: "meeting_not_found",
+					Content: "I can't find a meeting matching that reference for this caller."}
+			}
+			return toolInvokeResult{Success: false, Error: err.Error(),
+				Content: "Could not look up the meeting."}
+		}
+		if err := s.calendar.Cancel(ctx, call.TenantID, meeting.BotID, meeting.CalendarID, meeting.ProviderEventID); err != nil {
+			return toolInvokeResult{Success: false, Error: err.Error(),
+				Content: "Could not cancel the meeting in Google Calendar."}
+		}
+		if err := s.store.MarkScheduledMeetingCancelled(ctx, meeting.ID); err != nil {
+			s.logger.Warn("mark meeting cancelled in DB", "meeting", meeting.ID, "error", err)
+		}
+		return toolInvokeResult{Success: true,
+			Content: fmt.Sprintf("Meeting on %s cancelled. The attendee has been notified by email if applicable.",
+				meeting.StartAt.Format("Mon 2006-01-02 15:04"))}
+
+	case "calendar_reschedule_meeting":
+		// Args: { meeting_id: string, new_start_time: "RFC3339",
+		//         duration_min?: int, timezone?: string }
+		// Mismo patrón de ownership que cancel — re-validamos antes de
+		// tocar Google. duration_min opcional; si no, mantenemos la
+		// duración original calculada de start_at/end_at.
+		if s.calendar == nil || !s.calendar.Enabled() {
+			return toolInvokeResult{Success: false, Error: "calendar_not_configured",
+				Content: "Calendar service is not configured."}
+		}
+		meetingID, _ := args["meeting_id"].(string)
+		if strings.TrimSpace(meetingID) == "" {
+			return toolInvokeResult{Success: false, Error: "meeting_id_required",
+				Content: "Missing meeting_id. Call list_my_meetings first to get the reference."}
+		}
+		newStartStr, _ := args["new_start_time"].(string)
+		if strings.TrimSpace(newStartStr) == "" {
+			return toolInvokeResult{Success: false, Error: "new_start_required",
+				Content: "Missing new_start_time (RFC3339)."}
+		}
+		newStart, err := time.Parse(time.RFC3339, newStartStr)
+		if err != nil {
+			return toolInvokeResult{Success: false, Error: "invalid_new_start_time",
+				Content: "new_start_time must be RFC3339."}
+		}
+		leadID := ""
+		if call.LeadID != nil {
+			leadID = *call.LeadID
+		}
+		meeting, err := s.store.GetScheduledMeetingForLead(ctx, call.TenantID, meetingID, leadID, call.Phone)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return toolInvokeResult{Success: false, Error: "meeting_not_found",
+					Content: "I can't find a meeting matching that reference for this caller."}
+			}
+			return toolInvokeResult{Success: false, Error: err.Error(),
+				Content: "Could not look up the meeting."}
+		}
+		// Duración: si el LLM la pasa la usamos; si no, mantenemos la original.
+		durationMin := 0
+		if d, ok := args["duration_min"].(float64); ok && d > 0 {
+			durationMin = int(d)
+		} else {
+			durationMin = int(meeting.EndAt.Sub(meeting.StartAt).Minutes())
+		}
+		tz, _ := args["timezone"].(string)
+		if tz == "" {
+			tz = "Europe/Madrid"
+		}
+		if _, err := s.calendar.Reschedule(ctx, call.TenantID, meeting.BotID,
+			meeting.CalendarID, meeting.ProviderEventID,
+			calendar.RescheduleInput{NewStart: newStart, DurationMin: durationMin, TimeZone: tz}); err != nil {
+			return toolInvokeResult{Success: false, Error: err.Error(),
+				Content: "Could not move the meeting in Google Calendar."}
+		}
+		newEnd := newStart.Add(time.Duration(durationMin) * time.Minute)
+		if err := s.store.UpdateScheduledMeetingTimes(ctx, meeting.ID, newStart, newEnd); err != nil {
+			s.logger.Warn("update meeting times in DB", "meeting", meeting.ID, "error", err)
+		}
+		return toolInvokeResult{Success: true,
+			Content: fmt.Sprintf("Meeting moved to %s. The attendee has been notified by email if applicable.",
+				newStart.Format("Mon 2006-01-02 15:04"))}
 
 	case "search_knowledge_base":
 		// El LLM pasa la query en args.query. Buscamos top-K chunks en

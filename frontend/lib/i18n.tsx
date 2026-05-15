@@ -430,7 +430,11 @@ const ES: Dict = {
   "tools.config.kb.hint": "El LLM pasará una query en args.query y recibirá los fragmentos más relevantes. No requiere config adicional.",
   "tools.action.calendar_check_availability": "Consultar disponibilidad en calendario",
   "tools.action.calendar_schedule_meeting": "Programar reunión en calendario",
+  "tools.action.calendar_list_my_meetings": "Listar mis reuniones (lead actual)",
+  "tools.action.calendar_cancel_meeting": "Cancelar reunión",
+  "tools.action.calendar_reschedule_meeting": "Mover reunión",
   "tools.config.cal.hint": "Requiere conectar Google Calendar al bot. El LLM pasará fecha/hora en los args; el backend resuelve el calendario del bot conectado.",
+  "tools.config.cal.manage.hint": "El backend valida que la reunión pertenezca al lead que llama antes de cancelar o mover — no requiere config adicional. El LLM debe llamar antes a `list_my_meetings` para obtener el meeting_id.",
 
   // Calendar integration
   "cal.eyebrow": "Calendario",
@@ -1460,7 +1464,11 @@ const EN: Dict = {
   "tools.config.kb.hint": "The LLM passes a query in args.query and receives the most relevant chunks. No extra config needed.",
   "tools.action.calendar_check_availability": "Check calendar availability",
   "tools.action.calendar_schedule_meeting": "Schedule meeting in calendar",
+  "tools.action.calendar_list_my_meetings": "List my meetings (current lead)",
+  "tools.action.calendar_cancel_meeting": "Cancel meeting",
+  "tools.action.calendar_reschedule_meeting": "Move meeting",
   "tools.config.cal.hint": "Requires connecting Google Calendar to the bot. The LLM passes date/time in args; the backend resolves the connected calendar.",
+  "tools.config.cal.manage.hint": "The backend validates that the meeting belongs to the calling lead before cancel/move — no extra config needed. The LLM should call `list_my_meetings` first to obtain the meeting_id.",
 
   // Calendar integration
   "cal.eyebrow": "Calendar",
