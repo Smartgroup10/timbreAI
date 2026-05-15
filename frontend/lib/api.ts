@@ -239,7 +239,9 @@ export type BotToolActionType =
   | "webhook"
   | "end_call"
   | "transfer_human"
-  | "search_knowledge_base";
+  | "search_knowledge_base"
+  | "calendar_check_availability"
+  | "calendar_schedule_meeting";
 
 export type BotTool = {
   id: string;
@@ -475,6 +477,23 @@ export const api = {
     request<KBSearchHit[]>(
       "GET",
       withTenant(`/api/kb/search?q=${encodeURIComponent(q)}`, tenantOverride)
+    ),
+  calendarStatus: (botId: string, tenantOverride?: string) =>
+    request<{
+      connected: boolean;
+      provider?: string;
+      accountEmail?: string;
+      connectedAt?: string;
+    }>("GET", withTenant(`/api/bots/${botId}/calendar`, tenantOverride)),
+  calendarAuthorize: (botId: string, tenantOverride?: string) =>
+    request<{ authUrl: string }>(
+      "POST",
+      withTenant(`/api/bots/${botId}/calendar/authorize`, tenantOverride)
+    ),
+  calendarDisconnect: (botId: string, tenantOverride?: string) =>
+    request<void>(
+      "DELETE",
+      withTenant(`/api/bots/${botId}/calendar`, tenantOverride)
     ),
   createLead: (input: Partial<Lead>, tenantOverride?: string) =>
     request<Lead>("POST", withTenant("/api/leads", tenantOverride), input),

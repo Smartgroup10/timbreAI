@@ -428,6 +428,25 @@ const ES: Dict = {
   "kb.search.fromDoc": "de {doc}",
   "tools.action.search_knowledge_base": "Buscar en base de conocimiento",
   "tools.config.kb.hint": "El LLM pasará una query en args.query y recibirá los fragmentos más relevantes. No requiere config adicional.",
+  "tools.action.calendar_check_availability": "Consultar disponibilidad en calendario",
+  "tools.action.calendar_schedule_meeting": "Programar reunión en calendario",
+  "tools.config.cal.hint": "Requiere conectar Google Calendar al bot. El LLM pasará fecha/hora en los args; el backend resuelve el calendario del bot conectado.",
+
+  // Calendar integration
+  "cal.eyebrow": "Calendario",
+  "cal.title": "Google Calendar",
+  "cal.desc": "Conecta una cuenta de Google para que el bot pueda consultar disponibilidad y programar visitas durante la llamada.",
+  "cal.notConfigured": "Google OAuth no está configurado en el backend. Pide al administrador que añada GOOGLE_OAUTH_CLIENT_ID/CLIENT_SECRET.",
+  "cal.savefirst": "Guarda el bot antes de conectar un calendario.",
+  "cal.status.disconnected": "Sin conectar",
+  "cal.status.connected": "Conectado como {email}",
+  "cal.btn.connect": "Conectar Google Calendar",
+  "cal.btn.connecting": "Abriendo Google…",
+  "cal.btn.disconnect": "Desconectar",
+  "cal.btn.disconnect.confirm": "¿Desconectar este calendario? El bot dejará de poder programar visitas.",
+  "cal.toast.connected": "Calendario conectado",
+  "cal.toast.disconnected": "Calendario desconectado",
+  "cal.toast.error": "Error: {err}",
 
   // leads
   "leads.title": "Leads",
@@ -1439,6 +1458,25 @@ const EN: Dict = {
   "kb.search.fromDoc": "from {doc}",
   "tools.action.search_knowledge_base": "Search knowledge base",
   "tools.config.kb.hint": "The LLM passes a query in args.query and receives the most relevant chunks. No extra config needed.",
+  "tools.action.calendar_check_availability": "Check calendar availability",
+  "tools.action.calendar_schedule_meeting": "Schedule meeting in calendar",
+  "tools.config.cal.hint": "Requires connecting Google Calendar to the bot. The LLM passes date/time in args; the backend resolves the connected calendar.",
+
+  // Calendar integration
+  "cal.eyebrow": "Calendar",
+  "cal.title": "Google Calendar",
+  "cal.desc": "Connect a Google account so the bot can check availability and schedule visits during the call.",
+  "cal.notConfigured": "Google OAuth is not configured on the backend. Ask the administrator to set GOOGLE_OAUTH_CLIENT_ID/CLIENT_SECRET.",
+  "cal.savefirst": "Save the bot before connecting a calendar.",
+  "cal.status.disconnected": "Not connected",
+  "cal.status.connected": "Connected as {email}",
+  "cal.btn.connect": "Connect Google Calendar",
+  "cal.btn.connecting": "Opening Google…",
+  "cal.btn.disconnect": "Disconnect",
+  "cal.btn.disconnect.confirm": "Disconnect this calendar? The bot will no longer be able to schedule visits.",
+  "cal.toast.connected": "Calendar connected",
+  "cal.toast.disconnected": "Calendar disconnected",
+  "cal.toast.error": "Error: {err}",
 
   // leads
   "leads.title": "Leads",

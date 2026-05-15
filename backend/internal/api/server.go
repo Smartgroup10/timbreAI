@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"timbre/backend/internal/ari"
+	"timbre/backend/internal/calendar"
 	"timbre/backend/internal/config"
 	"timbre/backend/internal/kb"
 	"timbre/backend/internal/outwebhook"
@@ -26,6 +27,7 @@ type Server struct {
 	webhooks   *outwebhook.Dispatcher
 	realtime   *realtime.Hub
 	kb         *kb.Service
+	calendar   *calendar.Service
 	logger     *slog.Logger
 	loginRate  *rateLimiter
 }
@@ -41,6 +43,11 @@ func New(cfg config.Config, st *store.Store, ariClient *ari.Client, va *voiceage
 		webhooks:   outwebhook.New(st, logger.With("component", "outwebhook"), 4, 1024),
 		realtime:   realtime.NewHub(logger.With("component", "realtime")),
 		kb:         kb.NewService(st, logger.With("component", "kb")),
+		calendar: calendar.NewService(calendar.OAuthConfig{
+			ClientID:     cfg.GoogleOAuth.ClientID,
+			ClientSecret: cfg.GoogleOAuth.ClientSecret,
+			RedirectURL:  cfg.GoogleOAuth.RedirectURL,
+		}, st, logger.With("component", "calendar")),
 		logger:     logger,
 		// 1 token per second, burst of 10 => allows brief bursts but blocks brute-force.
 		loginRate: newRateLimiter(time.Second, 10),
@@ -173,6 +180,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/kb/documents", s.requireAuth(s.handleUploadKBDocument))
 	mux.HandleFunc("DELETE /api/kb/documents/{id}", s.requireAuth(s.handleDeleteKBDocument))
 	mux.HandleFunc("GET /api/kb/search", s.requireAuth(s.handleKBSearch))
+
+	// Calendar OAuth integration por bot.
+	mux.HandleFunc("GET /api/bots/{id}/calendar", s.requireAuth(s.handleCalendarStatus))
+	mux.HandleFunc("POST /api/bots/{id}/calendar/authorize", s.requireAuth(s.handleCalendarAuthorize))
+	mux.HandleFunc("DELETE /api/bots/{id}/calendar", s.requireAuth(s.handleCalendarDisconnect))
+	// Callback público — Google redirige aquí, valida con state firmado.
+	mux.HandleFunc("GET /api/calendar/google/callback", s.handleCalendarCallback)
 
 	// Platform-admin only
 	mux.HandleFunc("GET /api/admin/tenants", s.requireRole("platform_admin", s.handleTenants))

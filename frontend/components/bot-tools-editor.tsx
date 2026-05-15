@@ -31,6 +31,8 @@ const ACTION_TYPES: BotToolActionType[] = [
   "end_call",
   "transfer_human",
   "search_knowledge_base",
+  "calendar_check_availability",
+  "calendar_schedule_meeting",
 ];
 
 type Props = {
@@ -253,6 +255,53 @@ function ToolForm({
         required: ["query"],
       };
     }
+    if (a === "calendar_check_availability") {
+      return {
+        type: "object",
+        properties: {
+          date: {
+            type: "string",
+            description: "Date to check in YYYY-MM-DD format. Defaults to today.",
+          },
+          duration_min: {
+            type: "integer",
+            description: "Minimum slot length in minutes. Defaults to 30.",
+          },
+          timezone: {
+            type: "string",
+            description: "IANA timezone (e.g. Europe/Madrid). Defaults to tenant timezone.",
+          },
+        },
+      };
+    }
+    if (a === "calendar_schedule_meeting") {
+      return {
+        type: "object",
+        properties: {
+          start_time: {
+            type: "string",
+            description: "Meeting start in RFC3339 (e.g. 2025-06-12T18:00:00+02:00).",
+          },
+          duration_min: {
+            type: "integer",
+            description: "Duration in minutes. Defaults to 30.",
+          },
+          title: {
+            type: "string",
+            description: "Event title shown in calendar.",
+          },
+          description: {
+            type: "string",
+            description: "Optional notes about the meeting.",
+          },
+          attendee_email: {
+            type: "string",
+            description: "Lead email if provided during the call — Google sends them an invite.",
+          },
+        },
+        required: ["start_time"],
+      };
+    }
     return { type: "object", properties: {} };
   };
   const [paramsText, setParamsText] = useState(
@@ -378,6 +427,11 @@ function ToolForm({
       {actionType === "search_knowledge_base" ? (
         <p className="subtle" style={{ fontSize: 12.5, marginTop: 4 }}>
           {t("tools.config.kb.hint")}
+        </p>
+      ) : null}
+      {actionType === "calendar_check_availability" || actionType === "calendar_schedule_meeting" ? (
+        <p className="subtle" style={{ fontSize: 12.5, marginTop: 4 }}>
+          {t("tools.config.cal.hint")}
         </p>
       ) : null}
 

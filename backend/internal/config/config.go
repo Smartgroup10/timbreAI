@@ -26,6 +26,20 @@ type Config struct {
 	AudioSocket   AudioSocketConfig
 	VoiceAgent    VoiceAgentConfig
 	Storage       StorageConfig
+	GoogleOAuth   GoogleOAuthConfig
+}
+
+// GoogleOAuthConfig son las credenciales del proyecto OAuth de Google
+// Cloud Console. Si no están seteadas, el feature "conectar Calendar"
+// queda deshabilitado y la UI muestra "no configurado" en lugar de un
+// botón que no funciona.
+type GoogleOAuthConfig struct {
+	ClientID     string
+	ClientSecret string
+	// RedirectURL debe coincidir EXACTAMENTE con el redirect URI
+	// registrado en Google Cloud Console. Típicamente:
+	// https://<host>/api/calendar/google/callback
+	RedirectURL string
 }
 
 type StorageConfig struct {
@@ -125,6 +139,11 @@ func Load() (Config, error) {
 		VoiceAgent: VoiceAgentConfig{
 			URL:    env("VOICE_AGENT_URL", ""),
 			Secret: env("VOICE_AGENT_SHARED_SECRET", ""),
+		},
+		GoogleOAuth: GoogleOAuthConfig{
+			ClientID:     env("GOOGLE_OAUTH_CLIENT_ID", ""),
+			ClientSecret: env("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+			RedirectURL:  env("GOOGLE_OAUTH_REDIRECT_URL", ""),
 		},
 		Storage: StorageConfig{
 			Endpoint:  env("STORAGE_ENDPOINT", ""),

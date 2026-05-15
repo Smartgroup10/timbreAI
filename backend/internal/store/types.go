@@ -188,6 +188,27 @@ type BotToolInvocation struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
+// BotCalendarIntegration es la conexión OAuth de un bot con Google
+// Calendar (otros providers en el futuro). Los tokens se guardan
+// cifrados y no se exponen al JSON de salida — el frontend solo ve
+// si está conectado y con qué email.
+type BotCalendarIntegration struct {
+	ID                   string     `json:"id"`
+	TenantID             string     `json:"tenantId"`
+	BotID                string     `json:"botId"`
+	Provider             string     `json:"provider"`
+	AccountEmail         string     `json:"accountEmail"`
+	CalendarID           string     `json:"calendarId"`
+	Scopes               string     `json:"scopes,omitempty"`
+	ConnectedAt          time.Time  `json:"connectedAt"`
+	LastUsedAt           *time.Time `json:"lastUsedAt,omitempty"`
+	UpdatedAt            time.Time  `json:"updatedAt"`
+	// Tokens internos — nunca se serializan al cliente.
+	RefreshTokenPlain    string     `json:"-"`
+	AccessTokenPlain     string     `json:"-"`
+	AccessTokenExpiresAt *time.Time `json:"-"`
+}
+
 // KBDocument representa un documento subido a la knowledge base del
 // tenant. El contenido original no se almacena después del chunking —
 // vive solo en disco del operador. Lo que persiste son los chunks +

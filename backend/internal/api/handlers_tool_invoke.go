@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"timbre/backend/internal/calendar"
 	"timbre/backend/internal/kb"
 	"timbre/backend/internal/store"
 )
@@ -191,6 +192,136 @@ func (s *Server) executeToolAction(ctx context.Context, call store.Call, tool st
 		url, _ := tool.ActionConfig["url"].(string)
 		go s.dispatchToolWebhook(url, call, tool, args)
 		return toolInvokeResult{Success: true, Content: "Action sent."}
+
+	case "calendar_check_availability":
+		// Args: { date: "YYYY-MM-DD", duration_min?: int, timezone?: "Europe/Madrid" }
+		// Devolvemos slots libres del día en formato JSON al LLM — él se
+		// encarga de proponérselos al lead en lenguaje natural.
+		if s.calendar == nil || !s.calendar.Enabled() {
+			return toolInvokeResult{Success: false, Error: "calendar_not_configured",
+				Content: "Calendar service is not configured."}
+		}
+		botID, err := s.resolveBotIDForCall(ctx, call)
+		if err != nil || botID == "" {
+			return toolInvokeResult{Success: false, Error: "bot_not_resolved",
+				Content: "Cannot resolve bot for this call."}
+		}
+		dateStr, _ := args["date"].(string)
+		tz, _ := args["timezone"].(string)
+		if tz == "" {
+			tz = "Europe/Madrid"
+		}
+		loc, err := time.LoadLocation(tz)
+		if err != nil {
+			loc = time.UTC
+		}
+		var dayStart time.Time
+		if dateStr != "" {
+			d, err := time.ParseInLocation("2006-01-02", dateStr, loc)
+			if err != nil {
+				return toolInvokeResult{Success: false, Error: "invalid_date",
+					Content: "Date must be in YYYY-MM-DD format."}
+			}
+			dayStart = d
+		} else {
+			// Default: hoy en la TZ del tenant.
+			now := time.Now().In(loc)
+			dayStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+		}
+		// Solo proponemos horario laboral 9:00-19:00 — fuera de eso al
+		// lead lo agobia y al comercial le toca trabajar fines de semana.
+		windowStart := time.Date(dayStart.Year(), dayStart.Month(), dayStart.Day(), 9, 0, 0, 0, loc)
+		windowEnd := time.Date(dayStart.Year(), dayStart.Month(), dayStart.Day(), 19, 0, 0, 0, loc)
+		durationMin, _ := args["duration_min"].(float64)
+		if durationMin <= 0 {
+			durationMin = 30
+		}
+		slots, err := s.calendar.FindFreeSlots(ctx, call.TenantID, botID, windowStart, windowEnd, int(durationMin))
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return toolInvokeResult{Success: false, Error: "calendar_not_connected",
+					Content: "This bot has no calendar connected. Please ask the human team to schedule."}
+			}
+			return toolInvokeResult{Success: false, Error: err.Error(),
+				Content: "Could not check calendar availability."}
+		}
+		if len(slots) == 0 {
+			return toolInvokeResult{Success: true,
+				Content: "No free slots on that day. Try another day."}
+		}
+		// Formato legible para el LLM. Mostramos hasta 6 huecos.
+		var b strings.Builder
+		fmt.Fprintf(&b, "Free slots on %s (timezone %s):\n", dayStart.Format("2006-01-02"), tz)
+		for i, s := range slots {
+			if i >= 6 {
+				break
+			}
+			fmt.Fprintf(&b, "- %s to %s\n",
+				s.Start.In(loc).Format("15:04"),
+				s.End.In(loc).Format("15:04"))
+		}
+		return toolInvokeResult{Success: true, Content: b.String()}
+
+	case "calendar_schedule_meeting":
+		// Args: { start_time: "RFC3339", duration_min?: int, title?: string,
+		//         description?: string, attendee_email?: string, timezone?: string }
+		if s.calendar == nil || !s.calendar.Enabled() {
+			return toolInvokeResult{Success: false, Error: "calendar_not_configured",
+				Content: "Calendar service is not configured."}
+		}
+		botID, err := s.resolveBotIDForCall(ctx, call)
+		if err != nil || botID == "" {
+			return toolInvokeResult{Success: false, Error: "bot_not_resolved",
+				Content: "Cannot resolve bot for this call."}
+		}
+		startStr, _ := args["start_time"].(string)
+		if startStr == "" {
+			return toolInvokeResult{Success: false, Error: "start_required",
+				Content: "Missing start_time (RFC3339)."}
+		}
+		start, err := time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			return toolInvokeResult{Success: false, Error: "invalid_start_time",
+				Content: "start_time must be RFC3339 (e.g. 2025-06-12T18:00:00+02:00)."}
+		}
+		duration, _ := args["duration_min"].(float64)
+		if duration <= 0 {
+			duration = 30
+		}
+		title, _ := args["title"].(string)
+		if title == "" {
+			title = fmt.Sprintf("Visita: %s", call.LeadName)
+		}
+		desc, _ := args["description"].(string)
+		attendee, _ := args["attendee_email"].(string)
+		tz, _ := args["timezone"].(string)
+		if tz == "" {
+			tz = "Europe/Madrid"
+		}
+		ev, err := s.calendar.Schedule(ctx, call.TenantID, botID, calendar.ScheduleMeetingInput{
+			Start:         start,
+			DurationMin:   int(duration),
+			Title:         title,
+			Description:   desc,
+			AttendeeEmail: attendee,
+			TimeZone:      tz,
+		})
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return toolInvokeResult{Success: false, Error: "calendar_not_connected",
+					Content: "This bot has no calendar connected."}
+			}
+			return toolInvokeResult{Success: false, Error: err.Error(),
+				Content: "Could not schedule the meeting."}
+		}
+		// Marcamos el lead callback + outcome para que aparezca en el funnel.
+		if call.LeadID != nil {
+			_ = s.store.UpdateLeadStatus(ctx, call.TenantID, *call.LeadID, "callback")
+		}
+		_ = s.store.UpdateCallOutcome(ctx, call.TenantID, call.ID, "callback")
+		return toolInvokeResult{Success: true,
+			Content: fmt.Sprintf("Meeting scheduled for %s. Calendar link: %s",
+				start.In(time.UTC).Format(time.RFC3339), ev.HTMLink)}
 
 	case "search_knowledge_base":
 		// El LLM pasa la query en args.query. Buscamos top-K chunks en
