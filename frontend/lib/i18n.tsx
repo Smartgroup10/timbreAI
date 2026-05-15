@@ -1052,6 +1052,8 @@ const ES: Dict = {
   "status.desconocido": "Desconocido",
   "status.online": "En línea",
   "status.offline": "Sin conexión",
+  "status.inbound": "Entrante",
+  "status.Inbound": "Entrante",
 
   // common buttons
   "btn.save": "Guardar",
@@ -2150,6 +2152,8 @@ const EN: Dict = {
   "status.desconocido": "Unknown",
   "status.online": "Online",
   "status.offline": "Offline",
+  "status.inbound": "Inbound",
+  "status.Inbound": "Inbound",
 
   // common buttons
   "btn.save": "Save",

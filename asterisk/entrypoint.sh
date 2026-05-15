@@ -159,8 +159,24 @@ writeprotect = no
 exten => 6001,1,Dial(PJSIP/6001,30,m)
  same => n,Hangup()
 
+; ── Inbound desde trunks SIP ────────────────────────────────────────────
+; Patrón _X. matchea cualquier exten numérico — Asterisk recibe la INVITE
+; del provider con el DID marcado como Request-URI user (p.ej.
+; +34910000001). Lo enrutamos a Stasis pasando dos args:
+;   - "inbound": etiqueta de dirección (el backend la lee de ev.args).
+;   - EXTEN:     el DID que marcaron, que el handler resuelve a tenant+bot
+;                vía store.LookupInboundRoute.
+;
+; Si el DID no está en dids (porque el operador no lo dio de alta) o el
+; bot que lo tenía asignado se borró, el handler hace Hangup. El caller
+; oye fast-busy. NO suena el sandbox 6001 ni nada del lado del operador.
+;
+; El timeout 30s del Stasis evita que el handler se quede colgando si
+; el voice-agent no responde — Asterisk lo cuelga y reintentar es del
+; provider SIP.
 [from-trunk]
-exten => _X.,1,NoOp(Inbound desde trunk SIP a \${EXTEN})
+exten => _X.,1,NoOp(Inbound desde trunk SIP a \${EXTEN} (caller \${CALLERID(num)}))
+ same => n,Answer()
  same => n,Stasis(timbre-bot,inbound,\${EXTEN})
  same => n,Hangup()
 

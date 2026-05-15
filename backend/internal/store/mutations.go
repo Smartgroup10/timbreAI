@@ -65,6 +65,34 @@ func (s *Store) DeleteLead(ctx context.Context, tenantID, id string) error {
 }
 
 // GetLead is the public flavour of getLead.
+// FindLeadByPhone busca un lead del tenant por teléfono. Lo usa el
+// handler de inbound calls para asociar la llamada a un lead existente
+// en lugar de crear uno nuevo cada vez que el mismo número llama.
+//
+// El match acepta variantes con/sin prefijo "+" — Asterisk a veces
+// entrega el caller sin él, y los CSV importados pueden venir mixtos.
+func (s *Store) FindLeadByPhone(ctx context.Context, tenantID, phone string) (Lead, error) {
+	if phone == "" {
+		return Lead{}, ErrNotFound
+	}
+	alt := phone
+	if phone[0] != '+' {
+		alt = "+" + phone
+	}
+	var l Lead
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, tenant_id, name, phone, email, type, status, source, consent, last_activity
+		FROM leads
+		WHERE tenant_id = $1 AND (phone = $2 OR phone = $3)
+		ORDER BY last_activity DESC NULLS LAST
+		LIMIT 1`, tenantID, phone, alt).
+		Scan(&l.ID, &l.TenantID, &l.Name, &l.Phone, &l.Email, &l.Type, &l.Status, &l.Source, &l.Consent, &l.LastActivity)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return l, ErrNotFound
+	}
+	return l, err
+}
+
 func (s *Store) GetLead(ctx context.Context, tenantID, id string) (Lead, error) {
 	return s.getLead(ctx, tenantID, id)
 }

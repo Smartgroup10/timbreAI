@@ -420,6 +420,46 @@ func (s *Store) DeleteDID(ctx context.Context, id string) error {
 	return nil
 }
 
+// InboundRoute es lo que el handler ARI necesita para enrutar una
+// llamada entrante: a qué tenant pertenece el DID llamado y qué bot
+// lo atiende. BotID puede venir vacío si el DID no tiene bot asignado
+// — en ese caso la inbound se rechaza.
+type InboundRoute struct {
+	DIDID    string
+	TenantID string
+	BotID    string
+	BotName  string
+}
+
+// LookupInboundRoute busca el DID por E.164 y devuelve el bot que lo
+// tiene asignado (relación bots.did_id → dids.id). Acepta el número
+// con o sin prefijo "+" — Asterisk a veces lo entrega sin él.
+func (s *Store) LookupInboundRoute(ctx context.Context, e164 string) (InboundRoute, error) {
+	if e164 == "" {
+		return InboundRoute{}, ErrNotFound
+	}
+	withPlus := e164
+	if e164[0] != '+' {
+		withPlus = "+" + e164
+	}
+	var route InboundRoute
+	err := s.pool.QueryRow(ctx, `
+		SELECT d.id, d.tenant_id,
+		       COALESCE(b.id, ''),
+		       COALESCE(b.name, '')
+		FROM dids d
+		LEFT JOIN bots b ON b.did_id = d.id AND b.tenant_id = d.tenant_id
+		WHERE (d.e164 = $1 OR d.e164 = $2)
+		  AND d.status = 'active'
+		  AND d.tenant_id IS NOT NULL
+		LIMIT 1`, e164, withPlus).
+		Scan(&route.DIDID, &route.TenantID, &route.BotID, &route.BotName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return route, ErrNotFound
+	}
+	return route, err
+}
+
 // LookupDIDForBot returns the DID assigned to a bot (with its trunk endpoint), or ErrNotFound.
 func (s *Store) LookupDIDForBot(ctx context.Context, tenantID, botID string) (DID, error) {
 	var d DID

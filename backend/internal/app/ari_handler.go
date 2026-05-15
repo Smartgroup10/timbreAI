@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -112,8 +114,18 @@ func handleStasisStart(
 
 	// Find the call we previously originated so we know which tenant/bot to bridge.
 	call, err := st.FindCallByChannel(ctx, chID)
-	if err != nil {
-		logger.Warn("stasis: no call for channel; hanging up", "channel", chID, "error", err)
+	if errors.Is(err, store.ErrNotFound) {
+		// No hay call previa → es INBOUND (alguien marcó un DID nuestro).
+		// Resolvemos el DID → tenant + bot, creamos la fila call al vuelo,
+		// y caemos en el mismo flow de bridging.
+		call, err = handleInbound(ctx, ev, st, va, logger)
+		if err != nil {
+			logger.Warn("inbound setup failed; hanging up", "channel", chID, "error", err)
+			_ = ariClient.HangupChannel(ctx, chID)
+			return
+		}
+	} else if err != nil {
+		logger.Warn("stasis: lookup call for channel failed", "channel", chID, "error", err)
 		_ = ariClient.HangupChannel(ctx, chID)
 		return
 	}
@@ -302,6 +314,236 @@ func extractCause(raw []byte) string {
 		return ""
 	}
 	return probe.CauseTxt
+}
+
+// handleInbound recibe un StasisStart sin call previa (la llamada
+// entrante no fue originada por nosotros). Resuelve el DID destino a
+// un tenant + bot, crea la fila `call` y la sesión voice-agent, y
+// devuelve la call lista para el flow normal de bridging.
+//
+// Errores devueltos:
+//   - ErrNoExten            → el StasisStart no trae exten; dialplan mal configurado.
+//   - store.ErrNotFound     → el DID marcado no existe en la BD o no tiene tenant.
+//   - ErrNoBotAssigned      → el DID existe pero ningún bot lo tiene asignado.
+//   - errores de voice-agent → no se pudo crear sesión.
+//
+// El caller hace hangup en cualquier caso de error.
+func handleInbound(
+	ctx context.Context,
+	ev ari.Event,
+	st *store.Store,
+	va *voiceagent.Client,
+	logger *slog.Logger,
+) (store.Call, error) {
+	details := extractStasisStart(ev.Raw)
+	if details.Exten == "" {
+		return store.Call{}, ErrNoExten
+	}
+	logger = logger.With(
+		"caller", details.CallerNumber,
+		"exten", details.Exten,
+		"direction", "inbound",
+	)
+
+	// 1) Resolver DID → tenant + bot
+	route, err := st.LookupInboundRoute(ctx, details.Exten)
+	if err != nil {
+		return store.Call{}, fmt.Errorf("lookup inbound route: %w", err)
+	}
+	if route.BotID == "" {
+		return store.Call{}, ErrNoBotAssigned
+	}
+	logger = logger.With("tenant", route.TenantID, "bot", route.BotID)
+
+	bot, err := st.GetBot(ctx, route.TenantID, route.BotID)
+	if err != nil {
+		return store.Call{}, fmt.Errorf("get bot: %w", err)
+	}
+
+	// 2) Si el caller está bloqueado por DNC, rechazamos. El operador del
+	//    tenant decidió que ese número no debe ser contactado — aplica
+	//    tanto outbound como inbound (no queremos hablar con él).
+	if details.CallerNumber != "" {
+		if blocked, err := st.IsBlockedPhone(ctx, route.TenantID, details.CallerNumber); err == nil && blocked {
+			return store.Call{}, fmt.Errorf("caller %s in DNC list", details.CallerNumber)
+		}
+	}
+
+	// 3) Lead lookup/create — si el caller ya existe como lead reusamos
+	//    su id (mantenemos historial). Si no, creamos uno "inbound"
+	//    minimal para que la call tenga lead asociado.
+	var leadID *string
+	leadName := ""
+	if details.CallerNumber != "" {
+		if existing, err := st.FindLeadByPhone(ctx, route.TenantID, details.CallerNumber); err == nil {
+			leadID = &existing.ID
+			leadName = existing.Name
+		} else {
+			created, err := st.CreateLead(ctx, store.Lead{
+				TenantID: route.TenantID,
+				Name:     "Inbound " + details.CallerNumber,
+				Phone:    details.CallerNumber,
+				Type:     "renter",
+				Status:   "new",
+				Source:   "inbound_call",
+				Consent:  "implicit_inbound",
+			})
+			if err == nil {
+				leadID = &created.ID
+				leadName = created.Name
+				logger.Info("inbound: created lead", "lead", created.ID)
+			} else {
+				logger.Warn("inbound: lead create failed; continuing without", "error", err)
+			}
+		}
+	}
+
+	chID := channelID(ev)
+
+	// 4) Crear la fila call. status="answered" porque Asterisk ya la
+	//    contestó al pasar a Stasis (el dialplan típicamente ejecuta
+	//    Answer antes de Stasis para llamadas inbound).
+	now := time.Now().UTC()
+	provider := bot.VoiceProvider
+	if provider == "" {
+		provider = "echo"
+	}
+	call, err := st.CreateCall(ctx, store.Call{
+		TenantID:  route.TenantID,
+		LeadID:    leadID,
+		LeadName:  leadName,
+		Campaign:  "Inbound",
+		Phone:     details.CallerNumber,
+		Status:    "answered",
+		Outcome:   "pending",
+		ChannelID: chID,
+		StartedAt: &now,
+		Summary:   "Inbound call answered by " + route.BotName + ".",
+		Provider:  provider,
+	})
+	if err != nil {
+		return store.Call{}, fmt.Errorf("create inbound call: %w", err)
+	}
+	logger.Info("inbound: call created", "call", call.ID)
+
+	// 5) Voice-agent session — mismo flow que el dialer outbound.
+	if va == nil || !va.Enabled() {
+		return call, fmt.Errorf("voice-agent disabled")
+	}
+	creds := loadTenantVoiceCreds(ctx, st, route.TenantID, logger)
+	tools := loadBotTools(ctx, st, route.TenantID, route.BotID, logger)
+	vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	sess, err := va.CreateSession(vctx, voiceagent.Config{
+		CallID:      call.ID,
+		TenantID:    route.TenantID,
+		BotID:       route.BotID,
+		Provider:    provider,
+		Objective:   bot.Objective,
+		Guardrails:  bot.Guardrails,
+		Language:    bot.Language,
+		Voice:       bot.Voice,
+		LeadName:    leadName,
+		Credentials: creds,
+		Tools:       tools,
+	})
+	if err != nil {
+		return call, fmt.Errorf("voice-agent create session: %w", err)
+	}
+	if err := st.SetCallVoiceSession(ctx, route.TenantID, call.ID, sess.ID); err != nil {
+		logger.Warn("inbound: persist voice session failed", "error", err)
+	}
+	call.VoiceSessionID = sess.ID
+	return call, nil
+}
+
+// ErrNoExten — el StasisStart no traía exten. Indica dialplan mal
+// configurado: el contexto from-pstn debe ejecutar Stasis(app, ...) con
+// el exten ya resuelto al DID marcado.
+var ErrNoExten = errors.New("stasis start without dialplan exten")
+
+// ErrNoBotAssigned — el DID existe pero ningún bot lo tiene como
+// did_id. La inbound se rechaza con fast-busy hasta que el operador
+// asigne un bot al DID en el panel.
+var ErrNoBotAssigned = errors.New("DID has no bot assigned")
+
+// loadTenantVoiceCreds carga las credenciales del tenant para los
+// providers de voz. Extraído para reusarlo entre outbound y inbound;
+// hoy el dialer hace lo mismo inline.
+func loadTenantVoiceCreds(ctx context.Context, st *store.Store, tenantID string, logger *slog.Logger) voiceagent.Credentials {
+	vc, err := st.GetVoiceCredentials(ctx, tenantID)
+	if err != nil {
+		logger.Warn("inbound: voice credentials lookup failed", "error", err)
+		return voiceagent.Credentials{}
+	}
+	return voiceagent.Credentials{
+		OpenAIAPIKey:          vc.OpenAIAPIKey,
+		OpenAIRealtimeModel:   vc.OpenAIRealtimeModel,
+		OpenAIRealtimeVoice:   vc.OpenAIRealtimeVoice,
+		DeepgramAPIKey:        vc.DeepgramAPIKey,
+		DeepgramListenModel:   vc.DeepgramListenModel,
+		DeepgramThinkProvider: vc.DeepgramThinkProvider,
+		DeepgramThinkModel:    vc.DeepgramThinkModel,
+		DeepgramSpeakModel:    vc.DeepgramSpeakModel,
+		DeepgramGreeting:      vc.DeepgramGreeting,
+		AssemblyAIAPIKey:      vc.AssemblyAIAPIKey,
+		AssemblyAIVoice:       vc.AssemblyAIVoice,
+		AssemblyAIGreeting:    vc.AssemblyAIGreeting,
+	}
+}
+
+// loadBotTools carga las tools enabled del bot. Misma rutina que el
+// dialer outbound; centralizar evita drift entre los dos paths.
+func loadBotTools(ctx context.Context, st *store.Store, tenantID, botID string, logger *slog.Logger) []voiceagent.Tool {
+	rows, err := st.ListBotTools(ctx, tenantID, botID, true)
+	if err != nil {
+		logger.Warn("inbound: list bot tools failed", "error", err)
+		return nil
+	}
+	tools := make([]voiceagent.Tool, 0, len(rows))
+	for _, t := range rows {
+		tools = append(tools, voiceagent.Tool{
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  t.ParametersSchema,
+		})
+	}
+	return tools
+}
+
+// stasisStartDetails extrae los campos que necesitamos para enrutar
+// inbound calls desde el StasisStart event. ARI ya nos da el Channel
+// con su Caller (número de origen) y Dialplan.Exten (número marcado).
+// args son los strings que el dialplan pasa al Stasis() — los usamos
+// para distinguir inbound vs outbound explícitamente.
+type stasisStartDetails struct {
+	CallerNumber string
+	Exten        string
+	Args         []string
+}
+
+func extractStasisStart(raw []byte) stasisStartDetails {
+	var probe struct {
+		Channel struct {
+			Caller struct {
+				Number string `json:"number"`
+				Name   string `json:"name"`
+			} `json:"caller"`
+			Dialplan struct {
+				Context string `json:"context"`
+				Exten   string `json:"exten"`
+			} `json:"dialplan"`
+		} `json:"channel"`
+		Args []string `json:"args"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return stasisStartDetails{}
+	}
+	return stasisStartDetails{
+		CallerNumber: probe.Channel.Caller.Number,
+		Exten:        probe.Channel.Dialplan.Exten,
+		Args:         probe.Args,
+	}
 }
 
 func itoa(n int) string {
