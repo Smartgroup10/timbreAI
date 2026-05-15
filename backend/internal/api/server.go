@@ -181,6 +181,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/kb/documents/{id}", s.requireAuth(s.handleDeleteKBDocument))
 	mux.HandleFunc("GET /api/kb/search", s.requireAuth(s.handleKBSearch))
 
+	// Grabaciones.
+	mux.HandleFunc("GET /api/calls/{id}/recording", s.requireAuth(s.handleGetCallRecording))
+	mux.HandleFunc("GET /api/recordings", s.requireAuth(s.handleListRecordings))
+	mux.HandleFunc("DELETE /api/recordings/{id}", s.requireAuth(s.handleDeleteRecording))
+	mux.HandleFunc("GET /api/recordings/usage", s.requireAuth(s.handleRecordingUsage))
+
 	// Calendar OAuth integration por bot.
 	mux.HandleFunc("GET /api/bots/{id}/calendar", s.requireAuth(s.handleCalendarStatus))
 	mux.HandleFunc("POST /api/bots/{id}/calendar/authorize", s.requireAuth(s.handleCalendarAuthorize))

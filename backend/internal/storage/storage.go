@@ -119,6 +119,29 @@ func (c *Client) PutObject(ctx context.Context, key string, body []byte, content
 	return base + "/" + c.Bucket + "/" + key, nil
 }
 
+// DeleteObject borra el objeto. 404 cuenta como éxito — idempotente.
+// Lo usa el worker de retención y el endpoint de borrado manual.
+func (c *Client) DeleteObject(ctx context.Context, key string) error {
+	if !c.Enabled() {
+		return errors.New("storage_not_configured")
+	}
+	req, err := c.signedRequest(ctx, http.MethodDelete, c.Bucket+"/"+key, "", nil, "")
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK ||
+		resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	b, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("delete %s: %s: %s", key, resp.Status, string(b))
+}
+
 // PresignGet returns a presigned URL that can be opened in a browser without auth.
 //
 // Si PublicURL está definida (dev local o S3 público externo) se genera una URL

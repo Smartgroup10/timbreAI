@@ -21,11 +21,11 @@ func (s *Store) GetTenantSettings(ctx context.Context, tenantID string) (TenantS
 		SELECT tenant_id, timezone, caller_id_default,
 		       to_char(allowed_hours_start, 'HH24:MI'),
 		       to_char(allowed_hours_end, 'HH24:MI'),
-		       allowed_days, daily_call_cap, recording_enabled, updated_at
+		       allowed_days, daily_call_cap, recording_enabled, recording_retention_days, updated_at
 		FROM tenant_settings WHERE tenant_id = $1`, tenantID).
 		Scan(&ts.TenantID, &ts.Timezone, &ts.CallerIDDefault,
 			&startStr, &endStr,
-			&daysStr, &ts.DailyCallCap, &ts.RecordingEnabled, &ts.UpdatedAt)
+			&daysStr, &ts.DailyCallCap, &ts.RecordingEnabled, &ts.RecordingRetentionDays, &ts.UpdatedAt)
 	if err != nil {
 		return ts, err
 	}
@@ -36,13 +36,14 @@ func (s *Store) GetTenantSettings(ctx context.Context, tenantID string) (TenantS
 }
 
 type TenantSettingsPatch struct {
-	Timezone          *string
-	CallerIDDefault   *string
-	AllowedHoursStart *string
-	AllowedHoursEnd   *string
-	AllowedDays       *[]string
-	DailyCallCap      *int
-	RecordingEnabled  *bool
+	Timezone               *string
+	CallerIDDefault        *string
+	AllowedHoursStart      *string
+	AllowedHoursEnd        *string
+	AllowedDays            *[]string
+	DailyCallCap           *int
+	RecordingEnabled       *bool
+	RecordingRetentionDays *int
 }
 
 // UpdateTenantSettings applies a partial patch. Always runs against an existing row (inserted
@@ -83,6 +84,14 @@ func (s *Store) UpdateTenantSettings(ctx context.Context, tenantID string, p Ten
 	if p.RecordingEnabled != nil {
 		args = append(args, *p.RecordingEnabled)
 		set = append(set, "recording_enabled = $"+itoa(len(args)))
+	}
+	if p.RecordingRetentionDays != nil {
+		days := *p.RecordingRetentionDays
+		if days < 0 {
+			days = 0
+		}
+		args = append(args, days)
+		set = append(set, "recording_retention_days = $"+itoa(len(args)))
 	}
 
 	q := "UPDATE tenant_settings SET " + strings.Join(set, ", ") + " WHERE tenant_id = $1"

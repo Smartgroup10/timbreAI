@@ -289,6 +289,47 @@ export type WebhookEndpointInput = {
   active?: boolean;
 };
 
+export type CallRecordingMeta = {
+  id: string;
+  url: string;
+  contentType: string;
+  sizeBytes: number;
+  durationSec: number;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type CallRecordingListItem = {
+  id: string;
+  callId: string;
+  tenantId: string;
+  storageKey: string;
+  contentType: string;
+  sizeBytes: number;
+  durationSec: number;
+  status: string;
+  retentionDueAt?: string;
+  createdAt: string;
+  leadName: string;
+  phone: string;
+  campaign: string;
+  outcome: string;
+  url: string;
+};
+
+export type RecordingsPage = {
+  items: CallRecordingListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type RecordingUsage = {
+  totalBytes: number;
+  count: number;
+  oldestAt?: string;
+};
+
 export type KBDocument = {
   id: string;
   tenantId: string;
@@ -481,6 +522,31 @@ export const api = {
       "GET",
       withTenant(`/api/kb/search?q=${encodeURIComponent(q)}`, tenantOverride)
     ),
+  callRecording: (callId: string, tenantOverride?: string) =>
+    request<CallRecordingMeta>("GET", withTenant(`/api/calls/${callId}/recording`, tenantOverride)),
+  recordings: (params: {
+    page?: number;
+    pageSize?: number;
+    outcome?: string;
+    from?: string;
+    to?: string;
+  } = {}, tenantOverride?: string) => {
+    const q = new URLSearchParams();
+    if (params.page) q.set("page", String(params.page));
+    if (params.pageSize) q.set("pageSize", String(params.pageSize));
+    if (params.outcome) q.set("outcome", params.outcome);
+    if (params.from) q.set("from", params.from);
+    if (params.to) q.set("to", params.to);
+    const qs = q.toString();
+    return request<RecordingsPage>(
+      "GET",
+      withTenant(`/api/recordings${qs ? "?" + qs : ""}`, tenantOverride)
+    );
+  },
+  deleteRecording: (id: string, tenantOverride?: string) =>
+    request<void>("DELETE", withTenant(`/api/recordings/${id}`, tenantOverride)),
+  recordingsUsage: (tenantOverride?: string) =>
+    request<RecordingUsage>("GET", withTenant("/api/recordings/usage", tenantOverride)),
   calendarStatus: (botId: string, tenantOverride?: string) =>
     request<{
       connected: boolean;
@@ -640,6 +706,28 @@ function withTenant(path: string, tenant?: string): string {
 // tarifas de los providers (OpenAI/Deepgram/AssemblyAI) están en USD; si
 // queremos mostrar EUR habría que multiplicar por un tipo de cambio fijo
 // o variable. Para "estimate" en el dashboard sobra con USD.
+// formatBytes muestra GB/MB/KB con 1 decimal. Lo usamos para "Storage
+// usado: 3.2 GB" en el dashboard y "5.4 MB" en la lista de grabaciones.
+export function formatBytes(n: number | undefined): string {
+  if (!n || n <= 0) return "0 B";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+// formatDurationShort: 65s → "1:05", 3725s → "1h 2:05". Para columnas
+// de duración compactas en listings.
+export function formatDurationShort(sec: number | undefined): string {
+  if (!sec || sec <= 0) return "—";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const ss = s.toString().padStart(2, "0");
+  if (h > 0) return `${h}h ${m}:${ss}`;
+  return `${m}:${ss}`;
+}
+
 export function formatCostCents(cents: number | undefined): string {
   if (cents === undefined || cents === null) return "—";
   if (cents === 0) return "—";

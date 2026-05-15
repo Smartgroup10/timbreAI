@@ -5,7 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Minus, Phone, PhoneCall } from "lucide-re
 import { StatCard } from "../../components/stat-card";
 import { TestCallDrawer } from "../../components/test-call-drawer";
 import { DailyBars, HBars } from "../../components/charts";
-import { api, Call, formatCostCents, statusClass } from "../../lib/api";
+import { api, Call, formatBytes, formatCostCents, statusClass } from "../../lib/api";
 import { useTenantScope } from "../../lib/auth-context";
 import { useResource } from "../../lib/use-resource";
 import { useT, useStatusLabel } from "../../lib/i18n";
@@ -18,6 +18,7 @@ export default function PortalDashboard() {
   const statusLabel = useStatusLabel();
   const overview = useResource(() => api.overview(tenant), [tenant]);
   const analytics = useResource(() => api.analytics(tenant), [tenant]);
+  const recordingUsage = useResource(() => api.recordingsUsage(tenant), [tenant]);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Llamadas en curso AHORA (queued/dialing/in_progress). Refrescamos cada 5s
@@ -101,6 +102,15 @@ export default function PortalDashboard() {
                   .join(" · ")
               : ""
           }
+        />
+        <StatCard
+          label={t("portal.stat.storage")}
+          value={formatBytes(recordingUsage.data?.totalBytes)}
+          hint={t("portal.stat.storage.hint", {
+            size: formatBytes(recordingUsage.data?.totalBytes),
+            n: recordingUsage.data?.count ?? 0,
+          })}
+          trend={""}
         />
       </div>
 

@@ -309,15 +309,46 @@ type DoNotCallEntry struct {
 }
 
 type TenantSettings struct {
-	TenantID          string    `json:"tenantId"`
-	Timezone          string    `json:"timezone"`
-	CallerIDDefault   string    `json:"callerIdDefault"`
-	AllowedHoursStart string    `json:"allowedHoursStart"`
-	AllowedHoursEnd   string    `json:"allowedHoursEnd"`
-	AllowedDays       []string  `json:"allowedDays"`
-	DailyCallCap      int       `json:"dailyCallCap"`
-	RecordingEnabled  bool      `json:"recordingEnabled"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	TenantID               string    `json:"tenantId"`
+	Timezone               string    `json:"timezone"`
+	CallerIDDefault        string    `json:"callerIdDefault"`
+	AllowedHoursStart      string    `json:"allowedHoursStart"`
+	AllowedHoursEnd        string    `json:"allowedHoursEnd"`
+	AllowedDays            []string  `json:"allowedDays"`
+	DailyCallCap           int       `json:"dailyCallCap"`
+	RecordingEnabled       bool      `json:"recordingEnabled"`
+	// 0 = guardar indefinido. >0 = borrar grabaciones N días después
+	// de crearlas (soft delete + objeto en MinIO).
+	RecordingRetentionDays int       `json:"recordingRetentionDays"`
+	UpdatedAt              time.Time `json:"updatedAt"`
+}
+
+// CallRecording es una grabación almacenada en MinIO. NUNCA expone la
+// URL — el JSON solo trae el ID, key, tamaño y duración. La presigned
+// URL se genera on-demand al servir /api/calls/:id/recording.
+type CallRecording struct {
+	ID             string     `json:"id"`
+	CallID         string     `json:"callId"`
+	TenantID       string     `json:"tenantId"`
+	StorageKey     string     `json:"storageKey"`
+	ContentType    string     `json:"contentType"`
+	SizeBytes      int64      `json:"sizeBytes"`
+	DurationSec    int        `json:"durationSec"`
+	Status         string     `json:"status"` // available | archived
+	DeletedAt      *time.Time `json:"deletedAt,omitempty"`
+	RetentionDueAt *time.Time `json:"retentionDueAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+}
+
+// CallRecordingListItem agrega info de la call para el listing — evita
+// que la UI tenga que cargar la call separadamente para cada recording.
+type CallRecordingListItem struct {
+	CallRecording
+	LeadName string `json:"leadName"`
+	Phone    string `json:"phone"`
+	Campaign string `json:"campaign"`
+	Outcome  string `json:"outcome"`
 }
 
 type AuditLogEntry struct {

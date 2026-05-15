@@ -97,6 +97,15 @@ func main() {
 	w := worker.New(dialDeps, 30*time.Second)
 	go w.Run(rootCtx)
 
+	// Worker de retención: borra grabaciones cuyo retention_due_at ya
+	// pasó. Independiente del dialer worker — vive por su cuenta.
+	retention := &worker.RetentionWorker{
+		Store:   st,
+		Storage: storageClient,
+		Logger:  logger.With("component", "retention"),
+	}
+	go retention.Run(rootCtx)
+
 	// Server primero — crea el dispatcher de webhooks. Luego ARI handler
 	// recibe server.OnCallFinished para emitir call.completed sin acoplar
 	// el handler al dispatcher.
