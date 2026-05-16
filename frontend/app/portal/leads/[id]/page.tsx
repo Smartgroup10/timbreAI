@@ -112,13 +112,18 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           </div>
           <div className="field" style={{ marginTop: 14 }}>
             <label>{t("leads.detail.changestatus")}</label>
-            <select value={l.status} onChange={(e) => handleStatus(e.target.value)}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
+                <button
+                  key={s}
+                  type="button"
+                  className={`chip-button${l.status === s ? " active" : ""}`}
+                  onClick={() => l.status !== s && handleStatus(s)}
+                >
+                  {statusLabel(s)}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
         </section>
 

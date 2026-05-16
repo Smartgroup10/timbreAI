@@ -1,9 +1,12 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { api, formatCostCents, statusClass } from "../../../../lib/api";
+import { ArrowLeft, PhoneCall, PhoneOff, User } from "lucide-react";
+import { useConfirm } from "../../../../components/confirm";
+import { TestCallDrawer } from "../../../../components/test-call-drawer";
+import { useToast } from "../../../../components/toast";
+import { api, ApiError, formatCostCents, statusClass } from "../../../../lib/api";
 import { useTenantScope } from "../../../../lib/auth-context";
 import { useResource } from "../../../../lib/use-resource";
 import { useT, useStatusLabel } from "../../../../lib/i18n";
@@ -13,8 +16,28 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
   const tenant = useTenantScope();
   const t = useT();
   const statusLabel = useStatusLabel();
+  const toast = useToast();
+  const confirm = useConfirm();
   const call = useResource(() => api.getCall(id, tenant), [id, tenant]);
   const transcripts = useResource(() => api.callTranscripts(id, tenant), [id, tenant]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  async function handleAddToDNC(phone: string) {
+    const ok = await confirm({
+      title: t("calls.detail.dnc.confirm.title"),
+      description: t("calls.detail.dnc.confirm.desc", { phone }),
+      variant: "danger",
+      confirmLabel: t("calls.detail.dnc.confirm.cta"),
+    });
+    if (!ok) return;
+    try {
+      await api.addDNC({ phone, reason: t("calls.detail.dnc.reason") }, tenant);
+      toast.push(t("calls.detail.dnc.toast.added"), "success");
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : "error";
+      toast.push(t("calls.detail.dnc.toast.failed", { err: code }), "danger");
+    }
+  }
 
   if (call.loading) {
     return <div className="empty-state">{t("calls.detail.loading")}</div>;
@@ -51,9 +74,23 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
             <code className="mono">{c.id}</code>
           </p>
         </div>
-        <div className="actions">
+        <div className="actions" style={{ gap: 8, flexWrap: "wrap" }}>
           <span className={statusClass(c.status)}>{statusLabel(c.status)}</span>
           <span className="chip">{statusLabel(c.outcome)}</span>
+          {c.leadId ? (
+            <Link href={`/portal/leads/${c.leadId}`} className="button ghost compact">
+              <User aria-hidden="true" />
+              <span>{t("calls.detail.action.viewlead")}</span>
+            </Link>
+          ) : null}
+          <button className="button compact" onClick={() => setDrawerOpen(true)}>
+            <PhoneCall aria-hidden="true" />
+            <span>{t("calls.detail.action.recall")}</span>
+          </button>
+          <button className="button ghost compact" onClick={() => handleAddToDNC(c.phone)}>
+            <PhoneOff aria-hidden="true" />
+            <span>{t("calls.detail.action.dnc")}</span>
+          </button>
         </div>
       </div>
 
@@ -133,6 +170,13 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </section>
+
+      <TestCallDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        defaultPhone={c.phone}
+        defaultLeadName={c.leadName || ""}
+      />
     </>
   );
 }

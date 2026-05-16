@@ -25,24 +25,52 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, Tenant } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { useRealtime } from "../lib/use-realtime";
 import { useT, useLang } from "../lib/i18n";
 import { BrandMark } from "./logo";
 
 type NavItem = { icon: LucideIcon; labelKey: string; href: string };
+type NavGroup = { titleKey: string; items: NavItem[] };
 
-const portalLinks: NavItem[] = [
-  { icon: LayoutDashboard, labelKey: "nav.dashboard", href: "/portal" },
-  { icon: Users, labelKey: "nav.leads", href: "/portal/leads" },
-  { icon: Home, labelKey: "nav.properties", href: "/portal/properties" },
-  { icon: Bot, labelKey: "nav.bots", href: "/portal/bots" },
-  { icon: Wrench, labelKey: "nav.tools", href: "/portal/tools" },
-  { icon: Megaphone, labelKey: "nav.campaigns", href: "/portal/campaigns" },
-  { icon: PhoneCall, labelKey: "nav.calls", href: "/portal/calls" },
-  { icon: Mic, labelKey: "nav.recordings", href: "/portal/recordings" },
-  { icon: PhoneOff, labelKey: "nav.dnc", href: "/portal/do-not-call" },
-  { icon: ClipboardList, labelKey: "nav.audit", href: "/portal/audit" },
-  { icon: Receipt, labelKey: "nav.billing", href: "/portal/billing" },
-  { icon: Settings, labelKey: "nav.settings", href: "/portal/settings" },
+// Menu agrupado por intención de uso. Antes era una lista plana de 12
+// items donde "Settings" pesaba lo mismo que "Llamadas". Ahora separamos:
+//   - DAILY    día a día — lo que abre cada mañana
+//   - CONTENT  qué llama y qué dice (bots, tools, campañas, properties)
+//   - OBSERV   histórico/forense (grabaciones, coste, auditoría)
+//   - CONFIG   admin del tenant (DNC, ajustes)
+const portalGroups: NavGroup[] = [
+  {
+    titleKey: "nav.group.daily",
+    items: [
+      { icon: LayoutDashboard, labelKey: "nav.dashboard", href: "/portal" },
+      { icon: PhoneCall, labelKey: "nav.calls", href: "/portal/calls" },
+      { icon: Users, labelKey: "nav.leads", href: "/portal/leads" },
+    ],
+  },
+  {
+    titleKey: "nav.group.content",
+    items: [
+      { icon: Megaphone, labelKey: "nav.campaigns", href: "/portal/campaigns" },
+      { icon: Bot, labelKey: "nav.bots", href: "/portal/bots" },
+      { icon: Wrench, labelKey: "nav.tools", href: "/portal/tools" },
+      { icon: Home, labelKey: "nav.properties", href: "/portal/properties" },
+    ],
+  },
+  {
+    titleKey: "nav.group.observ",
+    items: [
+      { icon: Mic, labelKey: "nav.recordings", href: "/portal/recordings" },
+      { icon: Receipt, labelKey: "nav.billing", href: "/portal/billing" },
+      { icon: ClipboardList, labelKey: "nav.audit", href: "/portal/audit" },
+    ],
+  },
+  {
+    titleKey: "nav.group.config",
+    items: [
+      { icon: PhoneOff, labelKey: "nav.dnc", href: "/portal/do-not-call" },
+      { icon: Settings, labelKey: "nav.settings", href: "/portal/settings" },
+    ],
+  },
 ];
 
 const adminLinks: NavItem[] = [
@@ -59,6 +87,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { lang, setLang } = useLang();
   const isAdmin = user?.role === "platform_admin";
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  // Sentinel global del WebSocket realtime. El AppShell no necesita
+  // reaccionar a eventos concretos, solo mostrar 🟢/🟡 en el sidebar.
+  const { connected: liveConnected } = useRealtime(() => {});
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -90,7 +121,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="tenant-card">
-          <span>{t("shell.tenant.active")}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>{t("shell.tenant.active")}</span>
+            <span
+              className={`live-dot ${liveConnected ? "live-dot-on" : "live-dot-off"}`}
+              title={liveConnected ? t("shell.live.connected") : t("shell.live.reconnecting")}
+              aria-label={liveConnected ? t("shell.live.connected") : t("shell.live.reconnecting")}
+            >
+              <span className="live-dot-circle" />
+              {liveConnected ? t("shell.live.label") : t("shell.live.reconnecting.short")}
+            </span>
+          </div>
           <strong>{activeTenantName || "—"}</strong>
           {isAdmin ? (
             <select
@@ -110,19 +151,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        <div className="nav-section">{t("shell.section.portal")}</div>
-        <div className="nav-group">
-          {portalLinks.map(({ icon: Icon, labelKey, href }) => (
-            <Link
-              className={`nav-link${isActive(href) ? " active" : ""}`}
-              href={href}
-              key={href}
-            >
-              <Icon aria-hidden="true" />
-              <span>{t(labelKey)}</span>
-            </Link>
-          ))}
-        </div>
+        {portalGroups.map((g) => (
+          <div key={g.titleKey}>
+            <div className="nav-section">{t(g.titleKey)}</div>
+            <div className="nav-group">
+              {g.items.map(({ icon: Icon, labelKey, href }) => (
+                <Link
+                  className={`nav-link${isActive(href) ? " active" : ""}`}
+                  href={href}
+                  key={href}
+                >
+                  <Icon aria-hidden="true" />
+                  <span>{t(labelKey)}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
 
         {isAdmin ? (
           <>

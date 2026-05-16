@@ -24,6 +24,17 @@ const TIMEZONES = [
 
 const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
+type SettingsTab = "general" | "team" | "voice" | "kb" | "webhooks" | "security";
+
+const SETTINGS_TABS: { id: SettingsTab; labelKey: string }[] = [
+  { id: "general", labelKey: "settings.tab.general" },
+  { id: "team", labelKey: "settings.tab.team" },
+  { id: "voice", labelKey: "settings.tab.voice" },
+  { id: "kb", labelKey: "settings.tab.kb" },
+  { id: "webhooks", labelKey: "settings.tab.webhooks" },
+  { id: "security", labelKey: "settings.tab.security" },
+];
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const tenant = useTenantScope();
@@ -35,6 +46,9 @@ export default function SettingsPage() {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [tab, setTab] = useState<SettingsTab>("general");
+
+  const canManage = user?.role === "tenant_admin" || user?.role === "platform_admin";
 
   return (
     <>
@@ -46,91 +60,116 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">{t("settings.account.eyebrow")}</p>
-            <h2>{user?.name || user?.email}</h2>
-          </div>
-          <span className="chip">{user?.role}</span>
-        </div>
-        <div className="form-grid">
-          <div className="field">
-            <label>{t("login.email")}</label>
-            <input value={user?.email ?? ""} readOnly />
-          </div>
-          <div className="field">
-            <label>{t("settings.account.tenant")}</label>
-            <input value={user?.tenantId ?? "(platform)"} readOnly />
-          </div>
-        </div>
-      </section>
+      <div className="filter-row" style={{ marginBottom: 16 }}>
+        {SETTINGS_TABS.map((tt) => (
+          <button
+            key={tt.id}
+            className={`chip-button${tab === tt.id ? " active" : ""}`}
+            onClick={() => setTab(tt.id)}
+          >
+            {t(tt.labelKey)}
+          </button>
+        ))}
+      </div>
 
-      <section className="panel" style={{ marginTop: 16 }}>
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">{t("settings.security.eyebrow")}</p>
-            <h2>{t("settings.security.title")}</h2>
-          </div>
-        </div>
-        <form
-          className="form-grid"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            if (next.length < 8) {
-              toast.push(t("settings.security.warn.minlen"), "warn");
-              return;
-            }
-            if (next !== confirm) {
-              toast.push(t("settings.security.warn.mismatch"), "warn");
-              return;
-            }
-            setSubmitting(true);
-            try {
-              await api.changePassword(current, next);
-              toast.push(t("settings.security.toast.updated"), "success");
-              setCurrent("");
-              setNext("");
-              setConfirm("");
-            } catch (err) {
-              const code = err instanceof ApiError ? err.code : "error";
-              const label = code === "invalid_current_password" ? t("settings.security.toast.invalid_current") : code;
-              toast.push(`${t("g.error")}: ${label}`, "danger");
-            } finally {
-              setSubmitting(false);
-            }
-          }}
-        >
-          <div className="field">
-            <label>{t("settings.security.current")}</label>
-            <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
-          </div>
-          <div className="field">
-            <label>{t("settings.security.new")}</label>
-            <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} minLength={8} required />
-          </div>
-          <div className="field">
-            <label>{t("settings.security.confirm")}</label>
-            <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
-          </div>
-          <div className="field" style={{ alignSelf: "end" }}>
-            <button className="button" disabled={submitting}>
-              {submitting ? t("settings.security.submitting") : t("settings.security.submit")}
-            </button>
-          </div>
-        </form>
-        <p className="subtle" style={{ marginTop: 12 }}>{t("settings.security.hint")}</p>
-      </section>
+      {tab === "general" ? (
+        <>
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">{t("settings.account.eyebrow")}</p>
+                <h2>{user?.name || user?.email}</h2>
+              </div>
+              <span className="chip">{user?.role}</span>
+            </div>
+            <div className="form-grid">
+              <div className="field">
+                <label>{t("login.email")}</label>
+                <input value={user?.email ?? ""} readOnly />
+              </div>
+              <div className="field">
+                <label>{t("settings.account.tenant")}</label>
+                <input value={user?.tenantId ?? "(platform)"} readOnly />
+              </div>
+            </div>
+          </section>
+          <TenantSettingsPanel
+            settings={settingsRes.data}
+            loading={settingsRes.loading}
+            error={settingsRes.error}
+            onSaved={() => settingsRes.reload()}
+            tenant={tenant}
+          />
+        </>
+      ) : null}
 
-      <TenantSettingsPanel settings={settingsRes.data} loading={settingsRes.loading} error={settingsRes.error} onSaved={() => settingsRes.reload()} tenant={tenant} />
+      {tab === "team" ? (
+        <TeamPanel tenant={tenant} canManage={canManage} currentUserId={user?.id} />
+      ) : null}
 
-      <VoiceCredentialsPanel tenant={tenant} canManage={user?.role === "tenant_admin" || user?.role === "platform_admin"} />
+      {tab === "voice" ? <VoiceCredentialsPanel tenant={tenant} canManage={canManage} /> : null}
 
-      <TeamPanel tenant={tenant} canManage={user?.role === "tenant_admin" || user?.role === "platform_admin"} currentUserId={user?.id} />
+      {tab === "kb" ? <KBPanel /> : null}
 
-      <KBPanel />
+      {tab === "webhooks" ? <WebhooksPanel /> : null}
 
-      <WebhooksPanel />
+      {tab === "security" ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">{t("settings.security.eyebrow")}</p>
+              <h2>{t("settings.security.title")}</h2>
+            </div>
+          </div>
+          <form
+            className="form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (next.length < 8) {
+                toast.push(t("settings.security.warn.minlen"), "warn");
+                return;
+              }
+              if (next !== confirm) {
+                toast.push(t("settings.security.warn.mismatch"), "warn");
+                return;
+              }
+              setSubmitting(true);
+              try {
+                await api.changePassword(current, next);
+                toast.push(t("settings.security.toast.updated"), "success");
+                setCurrent("");
+                setNext("");
+                setConfirm("");
+              } catch (err) {
+                const code = err instanceof ApiError ? err.code : "error";
+                const label = code === "invalid_current_password" ? t("settings.security.toast.invalid_current") : code;
+                toast.push(`${t("g.error")}: ${label}`, "danger");
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            <div className="field">
+              <label>{t("settings.security.current")}</label>
+              <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
+            </div>
+            <div className="field">
+              <label>{t("settings.security.new")}</label>
+              <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} minLength={8} required />
+            </div>
+            <div className="field">
+              <label>{t("settings.security.confirm")}</label>
+              <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
+            </div>
+            <div className="field" style={{ alignSelf: "end" }}>
+              <button className="button" disabled={submitting}>
+                {submitting ? t("settings.security.submitting") : t("settings.security.submit")}
+              </button>
+            </div>
+          </form>
+          <p className="subtle" style={{ marginTop: 12 }}>{t("settings.security.hint")}</p>
+        </section>
+      ) : null}
     </>
   );
 }
