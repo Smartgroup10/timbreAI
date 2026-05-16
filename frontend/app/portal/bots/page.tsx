@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot as BotIcon, Pencil, Plus, Trash2 } from "lucide-react";
+import { Bot as BotIcon, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { useConfirm } from "../../../components/confirm";
 import { EmptyState } from "../../../components/empty";
 import { BotCalendarSection } from "../../../components/bot-calendar-section";
@@ -388,151 +388,159 @@ function BotEditor({
         </header>
 
         <form className="drawer-body" onSubmit={handleSubmit}>
-          <div className="field">
-            <label>{t("col.name")}</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div className="form-grid">
+          {/* Identidad — abierta por defecto, es lo más editado. */}
+          <BotSection title={t("bots.editor.section.identity")} defaultOpen>
             <div className="field">
-              <label>{t("bots.editor.field.type")}</label>
-              <select value={type} onChange={(e) => setType(e.target.value)}>
-                {BOT_TYPES.map((tp) => (
-                  <option key={tp} value={tp}>
-                    {tp}
-                  </option>
-                ))}
-              </select>
+              <label>{t("col.name")}</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
-            <div className="field">
-              <label>{t("bots.editor.field.status")}</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                {BOT_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>{t("bots.editor.field.language")}</label>
-              <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-                {/* Si el bot venía con un locale fuera de la lista, lo
-                    preservamos como primera opción para no sobreescribirlo
-                    silenciosamente al guardar. */}
-                {language && !LANGUAGE_OPTIONS.includes(language) ? (
-                  <option value={language}>{language}</option>
-                ) : null}
-                {LANGUAGE_OPTIONS.map((loc) => (
-                  <option key={loc} value={loc}>
-                    {t(`bots.editor.lang.${loc}`)}
-                  </option>
-                ))}
-              </select>
-              <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
-                {t("bots.editor.lang.autohint")}
-              </p>
-            </div>
-            <div className="field">
-              <label>{t("bots.editor.field.voice")}</label>
-              <select value={voice} onChange={(e) => handleVoiceChange(e.target.value)} disabled={voiceOptions.length === 0}>
-                {voiceOptions.length === 0 ? (
-                  <option value="">{t("bots.editor.voice.none")}</option>
-                ) : (
-                  <>
-                    <option value="">{t("bots.editor.voice.default")}</option>
-                    {voiceOptions.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.label}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </div>
-          </div>
-          <div className="field">
-            <label>{t("bots.editor.field.provider")}</label>
-            <select value={voiceProvider} onChange={(e) => setVoiceProvider(e.target.value)}>
-              <option value="echo">{t("bots.editor.provider.echo")}</option>
-              {catalog.map((p) => {
-                const isEnabled = enabledProviders.has(p.id);
-                return (
-                  <option key={p.id} value={p.id} disabled={!isEnabled}>
-                    {p.label}
-                    {isEnabled ? "" : t("bots.editor.provider.missingkey")}
-                  </option>
-                );
-              })}
-            </select>
-            <p className="subtle" style={{ marginTop: 4 }}>
-              {voiceProvider === "echo"
-                ? t("bots.editor.provider.echo.hint")
-                : enabledProviders.has(voiceProvider)
-                ? t("bots.editor.provider.enabled.hint", { provider: currentProvider?.label ?? voiceProvider })
-                : t("bots.editor.provider.disabled.hint", { provider: currentProvider?.label ?? voiceProvider })}
-            </p>
-          </div>
-          <div className="field">
-            <label>{t("bots.editor.field.objective")}</label>
-            <textarea
-              value={objective}
-              onChange={(e) => setObjective(e.target.value)}
-              placeholder={t("bots.editor.objective.placeholder")}
-            />
-          </div>
-          <div className="field">
-            <label>{t("bots.editor.field.guardrails")}</label>
-            <textarea
-              value={guardrails}
-              onChange={(e) => setGuardrails(e.target.value)}
-              placeholder={t("bots.editor.guardrails.placeholder")}
-            />
-          </div>
-
-          <div className="field" style={{ borderTop: "1px solid var(--border, #e5e7eb)", paddingTop: 12, marginTop: 4 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
-              <input
-                type="checkbox"
-                checked={amdEnabled}
-                onChange={(e) => setAmdEnabled(e.target.checked)}
-              />
-              {t("bots.editor.amd.enabled")}
-            </label>
-            <p className="subtle" style={{ fontSize: 12, marginTop: 4 }}>
-              {t("bots.editor.amd.hint")}
-            </p>
-          </div>
-          {amdEnabled ? (
-            <>
+            <div className="form-grid">
               <div className="field">
-                <label>{t("bots.editor.amd.action")}</label>
-                <select
-                  value={amdAction}
-                  onChange={(e) => setAmdAction(e.target.value as "hangup" | "drop_message" | "continue")}
-                >
-                  <option value="hangup">{t("bots.editor.amd.action.hangup")}</option>
-                  <option value="drop_message">{t("bots.editor.amd.action.drop_message")}</option>
-                  <option value="continue">{t("bots.editor.amd.action.continue")}</option>
+                <label>{t("bots.editor.field.type")}</label>
+                <select value={type} onChange={(e) => setType(e.target.value)}>
+                  {BOT_TYPES.map((tp) => (
+                    <option key={tp} value={tp}>
+                      {tp}
+                    </option>
+                  ))}
                 </select>
               </div>
-              {amdAction === "drop_message" ? (
-                <div className="field">
-                  <label>{t("bots.editor.amd.voicemail_message")}</label>
-                  <textarea
-                    value={voicemailMessage}
-                    onChange={(e) => setVoicemailMessage(e.target.value)}
-                    placeholder={t("bots.editor.amd.voicemail_message.placeholder")}
-                    rows={3}
-                  />
-                  <p className="subtle" style={{ fontSize: 12, marginTop: 4 }}>
-                    {t("bots.editor.amd.voicemail_message.hint")}
-                  </p>
-                </div>
-              ) : null}
-            </>
-          ) : null}
+              <div className="field">
+                <label>{t("bots.editor.field.status")}</label>
+                <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                  {BOT_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>{t("bots.editor.field.language")}</label>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                  {language && !LANGUAGE_OPTIONS.includes(language) ? (
+                    <option value={language}>{language}</option>
+                  ) : null}
+                  {LANGUAGE_OPTIONS.map((loc) => (
+                    <option key={loc} value={loc}>
+                      {t(`bots.editor.lang.${loc}`)}
+                    </option>
+                  ))}
+                </select>
+                <p className="subtle" style={{ marginTop: 4, fontSize: 12 }}>
+                  {t("bots.editor.lang.autohint")}
+                </p>
+              </div>
+              <div className="field">
+                <label>{t("bots.editor.field.voice")}</label>
+                <select value={voice} onChange={(e) => handleVoiceChange(e.target.value)} disabled={voiceOptions.length === 0}>
+                  {voiceOptions.length === 0 ? (
+                    <option value="">{t("bots.editor.voice.none")}</option>
+                  ) : (
+                    <>
+                      <option value="">{t("bots.editor.voice.default")}</option>
+                      {voiceOptions.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+          </BotSection>
 
-          <button className="button" disabled={submitting}>
+          <BotSection title={t("bots.editor.section.provider")}>
+            <div className="field">
+              <label>{t("bots.editor.field.provider")}</label>
+              <select value={voiceProvider} onChange={(e) => setVoiceProvider(e.target.value)}>
+                <option value="echo">{t("bots.editor.provider.echo")}</option>
+                {catalog.map((p) => {
+                  const isEnabled = enabledProviders.has(p.id);
+                  return (
+                    <option key={p.id} value={p.id} disabled={!isEnabled}>
+                      {p.label}
+                      {isEnabled ? "" : t("bots.editor.provider.missingkey")}
+                    </option>
+                  );
+                })}
+              </select>
+              <p className="subtle" style={{ marginTop: 4 }}>
+                {voiceProvider === "echo"
+                  ? t("bots.editor.provider.echo.hint")
+                  : enabledProviders.has(voiceProvider)
+                  ? t("bots.editor.provider.enabled.hint", { provider: currentProvider?.label ?? voiceProvider })
+                  : t("bots.editor.provider.disabled.hint", { provider: currentProvider?.label ?? voiceProvider })}
+              </p>
+            </div>
+          </BotSection>
+
+          <BotSection title={t("bots.editor.section.behavior")}>
+            <div className="field">
+              <label>{t("bots.editor.field.objective")}</label>
+              <textarea
+                value={objective}
+                onChange={(e) => setObjective(e.target.value)}
+                placeholder={t("bots.editor.objective.placeholder")}
+              />
+            </div>
+            <div className="field">
+              <label>{t("bots.editor.field.guardrails")}</label>
+              <textarea
+                value={guardrails}
+                onChange={(e) => setGuardrails(e.target.value)}
+                placeholder={t("bots.editor.guardrails.placeholder")}
+              />
+            </div>
+          </BotSection>
+
+          <BotSection title={t("bots.editor.section.amd")}>
+            <div className="field">
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={amdEnabled}
+                  onChange={(e) => setAmdEnabled(e.target.checked)}
+                />
+                {t("bots.editor.amd.enabled")}
+              </label>
+              <p className="subtle" style={{ fontSize: 12, marginTop: 4 }}>
+                {t("bots.editor.amd.hint")}
+              </p>
+            </div>
+            {amdEnabled ? (
+              <>
+                <div className="field">
+                  <label>{t("bots.editor.amd.action")}</label>
+                  <select
+                    value={amdAction}
+                    onChange={(e) => setAmdAction(e.target.value as "hangup" | "drop_message" | "continue")}
+                  >
+                    <option value="hangup">{t("bots.editor.amd.action.hangup")}</option>
+                    <option value="drop_message">{t("bots.editor.amd.action.drop_message")}</option>
+                    <option value="continue">{t("bots.editor.amd.action.continue")}</option>
+                  </select>
+                </div>
+                {amdAction === "drop_message" ? (
+                  <div className="field">
+                    <label>{t("bots.editor.amd.voicemail_message")}</label>
+                    <textarea
+                      value={voicemailMessage}
+                      onChange={(e) => setVoicemailMessage(e.target.value)}
+                      placeholder={t("bots.editor.amd.voicemail_message.placeholder")}
+                      rows={3}
+                    />
+                    <p className="subtle" style={{ fontSize: 12, marginTop: 4 }}>
+                      {t("bots.editor.amd.voicemail_message.hint")}
+                    </p>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </BotSection>
+
+          <button className="button" disabled={submitting} style={{ marginTop: 12 }}>
             {submitting ? t("bots.editor.submit.creating") : mode === "create" ? t("bots.editor.submit.create") : t("bots.editor.submit.save")}
           </button>
         </form>
@@ -553,6 +561,38 @@ function BotEditor({
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+// BotSection es el accordion colapsable para agrupar campos del editor.
+// Pone título clicable + chevron y oculta el contenido cuando está cerrado.
+// Default abierto solo para "Identidad" — el resto se abren bajo demanda
+// para reducir el ruido visual del drawer.
+function BotSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="bot-section">
+      <button
+        type="button"
+        className="bot-section-head"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="bot-section-caret">
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </span>
+        <span>{title}</span>
+      </button>
+      {open ? <div className="bot-section-body">{children}</div> : null}
     </div>
   );
 }

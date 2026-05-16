@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
+  Menu,
   Mic,
   PhoneCall,
   PhoneOff,
@@ -20,14 +21,17 @@ import {
   ShieldAlert,
   Users,
   Wrench,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, Tenant } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { useDensity } from "../lib/use-density";
 import { useRealtime } from "../lib/use-realtime";
 import { useT, useLang } from "../lib/i18n";
 import { BrandMark } from "./logo";
+import { CommandPalette } from "./command-palette";
 
 type NavItem = { icon: LucideIcon; labelKey: string; href: string };
 type NavGroup = { titleKey: string; items: NavItem[] };
@@ -90,6 +94,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Sentinel global del WebSocket realtime. El AppShell no necesita
   // reaccionar a eventos concretos, solo mostrar 🟢/🟡 en el sidebar.
   const { connected: liveConnected } = useRealtime(() => {});
+  const [density, setDensity] = useDensity();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Cerrar sidebar al navegar (en mobile). Reaccionamos a cambio de
+  // pathname, que ya tenemos arriba.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -108,7 +120,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="shell">
+    <div className={`shell${mobileOpen ? " sidebar-open" : ""}`}>
+      {/* Hamburger button — solo visible en mobile via media query. */}
+      <button
+        type="button"
+        className="mobile-menu-btn"
+        onClick={() => setMobileOpen((v) => !v)}
+        aria-label={mobileOpen ? t("shell.mobile.close") : t("shell.mobile.open")}
+      >
+        {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+      {/* Backdrop clickable para cerrar el sidebar en mobile. */}
+      {mobileOpen ? (
+        <button
+          type="button"
+          className="mobile-backdrop"
+          onClick={() => setMobileOpen(false)}
+          aria-label={t("shell.mobile.close")}
+        />
+      ) : null}
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-row">
@@ -119,6 +149,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <span className="brand-tagline">{t("shell.tagline")}</span>
         </div>
+
+        <button
+          type="button"
+          className="cmdk-launch"
+          onClick={() => {
+            // Disparamos un Cmd+K sintético; el palette está montado abajo y lo escucha.
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+          }}
+          title={t("cmdk.launch.hint")}
+        >
+          <span>{t("cmdk.launch.label")}</span>
+          <kbd className="cmdk-kbd">⌘K</kbd>
+        </button>
 
         <div className="tenant-card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -188,6 +231,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ) : null}
 
         <div className="lang-switch">
+          <span className="lang-switch-label">{t("shell.density.label")}</span>
+          <div className="lang-switch-buttons">
+            <button
+              type="button"
+              className={`lang-switch-btn${density === "comfortable" ? " active" : ""}`}
+              onClick={() => setDensity("comfortable")}
+              aria-pressed={density === "comfortable"}
+              title={t("shell.density.comfortable")}
+            >
+              {t("shell.density.comfortable.short")}
+            </button>
+            <button
+              type="button"
+              className={`lang-switch-btn${density === "compact" ? " active" : ""}`}
+              onClick={() => setDensity("compact")}
+              aria-pressed={density === "compact"}
+              title={t("shell.density.compact")}
+            >
+              {t("shell.density.compact.short")}
+            </button>
+          </div>
+        </div>
+
+        <div className="lang-switch">
           <span className="lang-switch-label">{t("lang.label")}</span>
           <div className="lang-switch-buttons">
             <button
@@ -236,6 +303,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ) : null}
         {children}
       </main>
+      <CommandPalette />
     </div>
   );
 }

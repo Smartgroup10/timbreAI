@@ -1133,6 +1133,154 @@ tr:last-child td {
   margin-top: auto;
 }
 
+/* ----------- Command palette (⌘K) ----------- */
+.cmdk-launch {
+  margin: 12px 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.cmdk-launch:hover {
+  border-color: var(--accent, #6366f1);
+  color: var(--text, #0f172a);
+}
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+.cmdk-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(2px);
+}
+.cmdk-panel {
+  position: relative;
+  width: min(640px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #fff);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px -10px rgba(15, 23, 42, 0.35);
+  overflow: hidden;
+}
+.cmdk-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  color: var(--muted);
+}
+.cmdk-input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: 15px;
+  color: var(--text, #0f172a);
+}
+.cmdk-input::placeholder { color: var(--muted); }
+.cmdk-kbd {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: var(--surface-2, #f8fafc);
+  color: var(--muted);
+}
+.cmdk-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+.cmdk-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.cmdk-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.cmdk-item:hover,
+.cmdk-item.active {
+  background: var(--accent-soft, #eef2ff);
+}
+.cmdk-icon {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.cmdk-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.cmdk-label {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk-hint {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk-kind {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-2, #f8fafc);
+}
+.cmdk-footer {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border, #e5e7eb);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
 /* Paneles colapsables — botón panel-header clickable, sin estilos
  * propios de button, mantiene look de panel-header. */
 .panel.collapsible .collapsible-trigger {
@@ -1152,6 +1300,58 @@ tr:last-child td {
   display: inline-flex;
   align-items: center;
   color: var(--muted);
+}
+
+/* Bot editor — secciones acordeón. Cada sección con header clickable
+ * y contenido oculto cuando está cerrada. Reduce el ruido visual de
+ * un drawer largo a ~4-5 acordeones según necesidad. */
+.bot-section {
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding: 6px 0;
+}
+.bot-section:first-of-type { border-top: 0; }
+.bot-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+}
+.bot-section-head:hover { color: var(--accent, #6366f1); }
+.bot-section-caret {
+  display: inline-flex;
+  color: var(--muted);
+}
+.bot-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 12px;
+}
+
+/* ----------- Density toggle (compact vs comfortable) -----------
+ * El AppShell setea data-density="compact" en <html>. Reducimos padding
+ * de table cells y altura de filas para ver ~30% más datos sin scroll.
+ * No tocamos comfortable (es el default actual). */
+html[data-density="compact"] th,
+html[data-density="compact"] td {
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+html[data-density="compact"] th {
+  font-size: 10px;
+}
+html[data-density="compact"] .chip,
+html[data-density="compact"] .status {
+  padding: 2px 8px;
+  font-size: 11px;
 }
 
 /* ---- Confirm modal ---- */
@@ -1738,19 +1938,69 @@ tr:last-child td {
   }
 }
 
+/* Botón hamburger — fijo top-left, solo visible en mobile.
+ * Backdrop para cerrar al click fuera del sidebar abierto. */
+.mobile-menu-btn,
+.mobile-backdrop {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
   }
 
   .sidebar {
-    position: static;
-    height: auto;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 280px;
+    z-index: 1500;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease-out;
+    box-shadow: 8px 0 24px -8px rgba(0, 0, 0, 0.25);
+  }
+
+  .shell.sidebar-open .sidebar {
+    transform: translateX(0);
   }
 
   .main {
-    padding: 24px;
+    padding: 64px 16px 24px;
   }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1400;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--border, #e5e7eb);
+    background: var(--surface, #fff);
+    color: var(--text, #0f172a);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+
+  .mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+    background: rgba(15, 23, 42, 0.45);
+    border: 0;
+    cursor: pointer;
+  }
+
+  table { min-width: auto; }
+  .topbar { flex-direction: column; align-items: stretch; gap: 12px; }
+  .topbar .actions { flex-wrap: wrap; }
 
   .grid,
   .grid.two,
