@@ -119,8 +119,10 @@ func (e *ElevenLabs) Run(ctx context.Context, s *session.Session) error {
 					continue
 				}
 				up := audio.UpsampleSlin8kTo16k(chunk)
+				// El shape oficial NO lleva campo "type" — solo
+				// user_audio_chunk con el base64. Es uno de los pocos
+				// mensajes asimétricos del protocolo de ElevenLabs.
 				_ = writeJSON(ctx, conn, map[string]any{
-					"type":             "user_audio_chunk",
 					"user_audio_chunk": base64.StdEncoding.EncodeToString(up),
 				})
 			}
@@ -172,18 +174,36 @@ func (e *ElevenLabs) handleEvent(ctx context.Context, conn *websocket.Conn, raw 
 	}
 	switch probe.Type {
 	case "ping":
-		// Mantener viva la conexión: respondemos con pong inmediato.
-		// El payload incluye un event_id que debemos echar de vuelta.
+		// Mantener viva la conexión. La doc oficial pide RESPETAR el
+		// ping_ms (delay que sugiere ElevenLabs antes del pong) — esto
+		// les permite calibrar latencia bidireccional. Si no viene
+		// ping_ms o es 0, respondemos inmediato.
 		var ping struct {
 			PingEvent struct {
 				EventID int `json:"event_id"`
+				PingMs  int `json:"ping_ms"`
 			} `json:"ping_event"`
 		}
 		if err := json.Unmarshal(raw, &ping); err == nil {
-			_ = writeJSON(ctx, conn, map[string]any{
-				"type":     "pong",
-				"event_id": ping.PingEvent.EventID,
-			})
+			eventID := ping.PingEvent.EventID
+			delay := time.Duration(ping.PingEvent.PingMs) * time.Millisecond
+			pong := func() {
+				_ = writeJSON(ctx, conn, map[string]any{
+					"type":     "pong",
+					"event_id": eventID,
+				})
+			}
+			if delay > 0 {
+				go func() {
+					select {
+					case <-time.After(delay):
+						pong()
+					case <-ctx.Done():
+					}
+				}()
+			} else {
+				pong()
+			}
 		}
 	case "vad_score":
 		// No-op por ahora; podría servir para barge-in fino.
