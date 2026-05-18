@@ -48,9 +48,12 @@ func NewTable() *Table {
 		// PRICING_DEEPGRAM_CENTS_PER_MIN por env. NOTA: con BYO LLM además
 		// se paga aparte al LLM provider (OpenAI/Anthropic) — eso no entra
 		// en este flat rate.
-		"deepgram":   8,
-		"assemblyai": 10, // streaming + LLM hosted
-		"echo":       0,  // sandbox local, no provider cost
+		"deepgram": 8,
+		// AssemblyAI Voice Agent API: $4.50/hr = $0.075/min Pay As You Go,
+		// igual que Deepgram Standard. Custom tier por contrato (variable).
+		// El antiguo valor 10 c/min era una estimación obsoleta.
+		"assemblyai": 8,
+		"echo":       0, // sandbox local, no provider cost
 	}}
 	for prov := range t.rates {
 		envKey := "PRICING_" + strings.ToUpper(prov) + "_CENTS_PER_MIN"
