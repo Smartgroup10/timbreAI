@@ -114,29 +114,28 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 			},
 		},
 		"agent": map[string]any{
-			// `agent.language` está deprecado a favor de los language
-			// específicos por provider (listen + speak). La doc actual:
-			//   https://developers.deepgram.com/docs/configure-voice-agent
-			// dice literalmente: "Deprecated; use agent.listen.provider.language
-			// and agent.speak.provider.language".
+			// `agent.language` top-level configura el ASR. La doc dice que
+			// está deprecado a favor de `listen.provider.language` /
+			// `speak.provider.language`, pero la forma top-level sigue
+			// funcionando y es la que tenemos verificada en producción.
+			// No la quitamos hasta que tengamos pruebas E2E con la nueva.
+			"language": deepgramLang(s.Config.Language),
 			"listen": map[string]any{
 				"provider": map[string]any{
-					"type":     "deepgram",
-					"model":    listenModel,
-					"language": deepgramLang(s.Config.Language),
-					// smart_format convierte secuencias de números pronunciados
-					// ("seis seis seis uno dos tres") en su forma escrita
-					// ("666123") — fundamental para capturar teléfonos del lead
-					// sin pos-procesado manual.
-					"smart_format": true,
+					"type":  "deepgram",
+					"model": listenModel,
+					// NOTA: smart_format y reasoning_mode están documentados
+					// pero su soporte depende del modelo + del think provider.
+					// Cuando los añadimos en bulk causaron que Settings
+					// fuera rechazado silenciosamente (bot sin hablar).
+					// Re-añadir uno por uno tras validación E2E.
 				},
 			},
 			"think": d.buildThinkSection(thinkProvider, thinkModel, openaiKey, SystemPrompt(s.Config), s.Config.Tools),
 			"speak": map[string]any{
 				"provider": map[string]any{
-					"type":     "deepgram",
-					"model":    speakModel,
-					"language": deepgramLang(s.Config.Language),
+					"type":  "deepgram",
+					"model": speakModel,
 				},
 			},
 			"greeting": greeting,
@@ -276,10 +275,10 @@ func (d *Deepgram) buildThinkSection(provider, model, externalKey, prompt string
 		"provider": map[string]any{
 			"type":  provider,
 			"model": model,
-			// reasoning_mode "low" — análogo al reasoning.effort de OpenAI:
-			// suficiente para un agente conversacional, evita latencia extra.
-			// Acepta low/medium/high según la doc oficial.
-			"reasoning_mode": "low",
+			// NOTA: reasoning_mode aparece en la doc pero parece no estar
+			// soportado por todos los modelos (gpt-4o-mini lo rechaza
+			// silenciosamente y la Settings falla). Reactivar selectivamente
+			// cuando tengamos un E2E test que verifique la respuesta.
 		},
 		"prompt": prompt,
 	}

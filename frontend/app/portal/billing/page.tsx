@@ -108,19 +108,22 @@ export default function BillingPage() {
         </div>
       </div>
 
-      <div className="stat-grid" style={{ marginTop: 16 }}>
-        <div className="stat-card">
+      {/* Usamos `.grid` + `.panel stat-card` como el resto de la app
+       *  (StatCard component lo hace así). Sin la clase `panel` los
+       *  divs quedan sin fondo y solo se ve el ::after coral suelto. */}
+      <div className="grid" style={{ marginTop: 16 }}>
+        <section className="panel stat-card">
           <p className="eyebrow">{t("billing.stat.calls")}</p>
-          <h2>{totals.calls}</h2>
-        </div>
-        <div className="stat-card">
+          <span className="stat-value">{totals.calls}</span>
+        </section>
+        <section className="panel stat-card">
           <p className="eyebrow">{t("billing.stat.duration")}</p>
-          <h2>{formatDurationShort(totals.duration)}</h2>
-        </div>
-        <div className="stat-card">
+          <span className="stat-value">{formatDurationShort(totals.duration)}</span>
+        </section>
+        <section className="panel stat-card">
           <p className="eyebrow">{t("billing.stat.cost")}</p>
-          <h2>{formatMicroCents(totals.cost)}</h2>
-        </div>
+          <span className="stat-value">{formatMicroCents(totals.cost)}</span>
+        </section>
       </div>
 
       {loading ? (

@@ -76,13 +76,12 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 			"silence_duration_ms": 600,
 		},
 		"input_audio_transcription": map[string]any{"model": "whisper-1"},
-		// reasoning.effort: la guía oficial de gpt-realtime recomienda
-		// arrancar en "low" para voice agents en producción. "minimal"
-		// es para comandos simples (timers, smart-home). Más alto añade
-		// latencia perceptible — solo usar si la tarea lo justifica.
-		"reasoning": map[string]any{
-			"effort": "low",
-		},
+		// NOTA: NO añadir "reasoning.effort" aquí. La guía de prompting
+		// lo menciona como concepto, pero el campo "reasoning" es propio
+		// de la Responses API, no de Realtime session.update. Cuando se
+		// envía, OpenAI lo rechaza silenciosamente y la sesión queda en
+		// estado inválido — el bot no habla. Eliminado tras encontrar
+		// audio roto en producción (commit anterior lo había añadido).
 	}
 	// Tools: OpenAI Realtime acepta [{type:"function", name, description, parameters}].
 	// Sin esto el LLM nunca emitirá function_call.
