@@ -67,25 +67,35 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 	// se acelera 3x → el LLM no entiende nada. Usamos g711_ulaw para que
 	// ambos lados hablen en 8 kHz y solo convertimos slin↔ulaw aquí.
 	// Patrón copiado de Smartgroup10/SmartSIP.
+	// SCHEMA GA (gpt-realtime, ago 2025) — cambios vs preview:
+	//   - session.type = "realtime"  (NUEVO requerido, sin esto OpenAI
+	//     responde "Missing required parameter: session.type")
+	//   - audio config movida bajo audio.input / audio.output
+	//   - voice → audio.output.voice
+	//   - input_audio_format → audio.input.format
+	//   - output_audio_format → audio.output.format
+	//   - input_audio_transcription → audio.input.transcription
+	//   - modalities ya no se pasa (se infiere de audio.*)
+	// Fuente: https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/realtime-audio-preview-api-migration-guide
 	sessionCfg := map[string]any{
-		"modalities":          []string{"audio", "text"},
-		"instructions":        SystemPrompt(s.Config),
-		"voice":               voice,
-		"input_audio_format":  "g711_ulaw",
-		"output_audio_format": "g711_ulaw",
+		"type":         "realtime",
+		"instructions": SystemPrompt(s.Config),
+		"audio": map[string]any{
+			"input": map[string]any{
+				"format":        "g711_ulaw",
+				"transcription": map[string]any{"model": "whisper-1"},
+			},
+			"output": map[string]any{
+				"voice":  voice,
+				"format": "g711_ulaw",
+			},
+		},
 		"turn_detection": map[string]any{
 			"type":                "server_vad",
 			"threshold":           0.5,
 			"prefix_padding_ms":   300,
 			"silence_duration_ms": 600,
 		},
-		"input_audio_transcription": map[string]any{"model": "whisper-1"},
-		// NOTA: NO añadir "reasoning.effort" aquí. La guía de prompting
-		// lo menciona como concepto, pero el campo "reasoning" es propio
-		// de la Responses API, no de Realtime session.update. Cuando se
-		// envía, OpenAI lo rechaza silenciosamente y la sesión queda en
-		// estado inválido — el bot no habla. Eliminado tras encontrar
-		// audio roto en producción (commit anterior lo había añadido).
 	}
 	// Tools: OpenAI Realtime acepta [{type:"function", name, description, parameters}].
 	// Sin esto el LLM nunca emitirá function_call.
@@ -188,7 +198,10 @@ func (o *OpenAIRealtime) handleEvent(ctx context.Context, conn *websocket.Conn, 
 		o.logger.Debug("openai rate_limits", "session", s.ID)
 	}
 	switch t {
-	case "response.audio.delta":
+	// GA renombró los eventos response.audio.* → response.output_audio.*
+	// Mantenemos los nombres antiguos como aliases por si OpenAI sigue
+	// emitiéndolos en cuentas en preview o cuentas mixtas.
+	case "response.output_audio.delta", "response.audio.delta":
 		// base64 g711_ulaw 8 kHz mono. AudioSocket espera slin (8 kHz signed
 		// linear 16-bit), así que convertimos antes de pushear a AudioOut.
 		if data, _ := msg["delta"].(string); data != "" {
@@ -200,11 +213,11 @@ func (o *OpenAIRealtime) handleEvent(ctx context.Context, conn *websocket.Conn, 
 				}
 			}
 		}
-	case "response.audio_transcript.delta":
+	case "response.output_audio_transcript.delta", "response.audio_transcript.delta":
 		if delta, _ := msg["delta"].(string); delta != "" {
 			emit(s, session.Event{Type: "transcript", Role: "agent", Text: delta, Final: false})
 		}
-	case "response.audio_transcript.done":
+	case "response.output_audio_transcript.done", "response.audio_transcript.done":
 		if txt, _ := msg["transcript"].(string); txt != "" {
 			emit(s, session.Event{Type: "transcript", Role: "agent", Text: txt, Final: true})
 			s.AppendTranscript("agent", txt)
