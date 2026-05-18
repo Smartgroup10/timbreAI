@@ -452,6 +452,12 @@ func handleInbound(
 	// aquí tras cargar las credenciales generales del tenant.
 	creds.ElevenLabsAgentID = bot.ElevenLabsAgentID
 	tools := loadBotTools(ctx, st, route.TenantID, decision.BotID, logger)
+
+	recordingEnabled := false
+	if ts, err := st.GetTenantSettings(ctx, route.TenantID); err == nil {
+		recordingEnabled = ts.RecordingEnabled
+	}
+
 	vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	sess, err := va.CreateSession(vctx, voiceagent.Config{
@@ -471,6 +477,7 @@ func handleInbound(
 			Action:  bot.AMDAction,
 			Message: bot.VoicemailMessage,
 		},
+		RecordingEnabled: recordingEnabled,
 	})
 	if err != nil {
 		return call, fmt.Errorf("voice-agent create session: %w", err)

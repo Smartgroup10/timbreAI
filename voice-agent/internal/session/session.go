@@ -47,6 +47,11 @@ type Config struct {
 	// audiosocket alimenta un detector con los primeros segundos de audio
 	// y, según AMD.Action, decide si colgar o soltar un mensaje TTS.
 	AMD AMDConfig `json:"amd,omitempty"`
+
+	// RecordingEnabled controla si el audiosocket graba el audio completo
+	// de la llamada (mezcla caller + bot) y lo sube al backend al cerrar.
+	// Si false, no se toca disco para esa sesión.
+	RecordingEnabled bool `json:"recordingEnabled,omitempty"`
 }
 
 // AMDConfig es la configuración de detección de buzón para la sesión.

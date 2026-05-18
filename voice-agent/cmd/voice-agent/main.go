@@ -56,7 +56,10 @@ func main() {
 	// audio slin 8 kHz directo, sin RTP ni transcoding.
 	if cfg.AudioSocket.Enabled {
 		asAddr := "0.0.0.0:" + cfg.AudioSocket.Port
-		asSrv := audiosocket.New(asAddr, registry, logger)
+		// Pasamos URL del backend para subir grabaciones cuando la sesión
+		// las tenga habilitadas. Sin esto, RecordingEnabled=true se ignora.
+		asSrv := audiosocket.New(asAddr, registry, logger).
+			WithRecordingUpload(cfg.BackendURL, cfg.BackendAuthKey)
 		go func() {
 			if err := asSrv.Run(ctx); err != nil {
 				logger.Error("audiosocket server stopped", "error", err)

@@ -515,11 +515,28 @@ func (s *Store) MarkCallAnswered(ctx context.Context, tenantID, id, externalMedi
 	return err
 }
 
+// FinishCall marca la llamada como terminada. La duración se calcula así:
+//
+//   - Si durationSec > 0 (vino de un evento ARI con timestamps válidos), la usamos.
+//   - Si durationSec = 0 (el parser de ChannelDestroyed falló — Asterisk emite el
+//     timestamp en un formato no-RFC3339 como "2026-05-18T18:24:48.616+0000" que
+//     time.Parse rechaza), calculamos en SQL desde started_at hasta now().
+//
+// Sin este fallback, todas las llamadas mostraban "—" en duración y coste (ya que
+// pricing.Cost(provider, 0) = 0).
 func (s *Store) FinishCall(ctx context.Context, channelID, status, outcome, summary string, durationSec int) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE calls
-		SET status = $2, outcome = COALESCE(NULLIF($3, ''), outcome),
-		    summary = COALESCE(NULLIF($4, ''), summary), duration_sec = $5, ended_at = now()
+		SET status = $2,
+		    outcome = COALESCE(NULLIF($3, ''), outcome),
+		    summary = COALESCE(NULLIF($4, ''), summary),
+		    duration_sec = CASE
+		      WHEN $5::int > 0 THEN $5::int
+		      WHEN started_at IS NOT NULL THEN
+		        GREATEST(0, EXTRACT(EPOCH FROM (now() - started_at))::int)
+		      ELSE 0
+		    END,
+		    ended_at = now()
 		WHERE channel_id = $1`, channelID, status, outcome, summary, durationSec)
 	return err
 }

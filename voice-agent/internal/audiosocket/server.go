@@ -35,6 +35,7 @@ import (
 	"sync"
 	"time"
 
+	"timbre/voice-agent/internal/recording"
 	"timbre/voice-agent/internal/session"
 )
 
@@ -61,12 +62,26 @@ type Server struct {
 	registry *session.Registry
 	logger   *slog.Logger
 
+	// Para grabaciones — opcionales. Si BackendURL está vacío, el audiosocket
+	// no intenta subir nada aunque el flag de la sesión esté on.
+	backendURL     string
+	backendAuthKey string
+
 	listener net.Listener
 	wg       sync.WaitGroup
 }
 
 func New(addr string, reg *session.Registry, logger *slog.Logger) *Server {
 	return &Server{addr: addr, registry: reg, logger: logger}
+}
+
+// WithRecordingUpload configura el destino de subida de grabaciones.
+// Llamarlo desde el main tras New() — opcional; si no se llama, el
+// audiosocket nunca graba aunque el flag de la sesión esté on.
+func (s *Server) WithRecordingUpload(backendURL, authKey string) *Server {
+	s.backendURL = backendURL
+	s.backendAuthKey = authKey
+	return s
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -127,14 +142,63 @@ func (s *Server) handleConnection(parentCtx context.Context, conn net.Conn) {
 		cancel()
 	}()
 
+	// Grabación opcional. Solo si:
+	//   - El operador habilitó RecordingEnabled en tenant_settings.
+	//   - El audiosocket tiene configurado dónde subir (BackendURL).
+	//
+	// Sample rate 8 kHz porque AudioSocket entrega slin nativo. El recorder
+	// intercala caller (readLoop) y bot (writeLoop) en el mismo stream PCM
+	// — sin separación de canales por simplicidad; el resultado es
+	// audible aunque con eco menor. Para mezcla limpia haría falta refactor.
+	var rec *recording.Recorder
+	if sess.Config.RecordingEnabled && s.backendURL != "" {
+		rec = recording.New(sess.ID, SampleRate)
+		s.logger.Info("audiosocket recording enabled", "session", sess.ID)
+	}
+	defer func() {
+		if rec == nil {
+			return
+		}
+		if err := rec.Close(); err != nil {
+			s.logger.Warn("recorder close", "session", sess.ID, "error", err)
+		}
+	}()
+	defer func() {
+		if rec == nil {
+			return
+		}
+		uploadCtx, ucancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer ucancel()
+		body, contentType, err := rec.EncodeOpus(uploadCtx)
+		if err != nil && !errors.Is(err, recording.ErrNoFFmpeg) {
+			s.logger.Warn("recording opus encode failed, falling back to wav",
+				"session", sess.ID, "error", err)
+			body = nil
+		}
+		if body == nil {
+			body = rec.WAV()
+			contentType = "audio/wav"
+		}
+		if len(body) == 0 {
+			return
+		}
+		up := recording.NewUploader(s.backendURL, s.backendAuthKey)
+		if err := up.Upload(uploadCtx, sess.ID, body, contentType); err != nil {
+			s.logger.Warn("recording upload", "session", sess.ID, "error", err)
+		} else {
+			s.logger.Info("recording uploaded",
+				"session", sess.ID, "format", contentType, "bytes", len(body))
+		}
+	}()
+
 	// Read loop: TCP frames → sess.AudioIn (slin 8kHz 16-bit, 320B/20ms).
-	go s.readLoop(ctx, conn, sess)
+	go s.readLoop(ctx, conn, sess, rec)
 
 	// Write loop: sess.AudioOut → TCP frames a Asterisk con pacing 20ms.
-	s.writeLoop(ctx, conn, sess)
+	s.writeLoop(ctx, conn, sess, rec)
 }
 
-func (s *Server) readLoop(ctx context.Context, conn net.Conn, sess *session.Session) {
+func (s *Server) readLoop(ctx context.Context, conn net.Conn, sess *session.Session, rec *recording.Recorder) {
 	defer s.logger.Info("audiosocket read loop ended", "session", sess.ID)
 	header := make([]byte, 3)
 	var pktTotal, forwarded, dropped uint64
@@ -189,6 +253,11 @@ func (s *Server) readLoop(ctx context.Context, conn net.Conn, sess *session.Sess
 			// Tap AMD antes de empujar al provider. Es no-op si AMD está
 			// deshabilitado o ya emitió veredicto, así que no penaliza.
 			sess.ObserveInbound(payload)
+			// Tap recorder para grabar el audio del caller. Es nil si la
+			// grabación está desactivada — no se asigna memoria de más.
+			if rec != nil {
+				rec.Append(payload)
+			}
 			select {
 			case sess.AudioIn <- payload:
 				forwarded++
@@ -211,7 +280,7 @@ func (s *Server) readLoop(ctx context.Context, conn net.Conn, sess *session.Sess
 
 // writeLoop drena sess.AudioOut y manda frames a 20ms. Si no hay audio
 // pendiente, NO escribe (Asterisk reproduce silencio nativamente).
-func (s *Server) writeLoop(ctx context.Context, conn net.Conn, sess *session.Session) {
+func (s *Server) writeLoop(ctx context.Context, conn net.Conn, sess *session.Session, rec *recording.Recorder) {
 	defer s.logger.Info("audiosocket write loop ended", "session", sess.ID)
 	var buf []byte
 	tick := time.NewTicker(FrameTick)
@@ -241,6 +310,11 @@ func (s *Server) writeLoop(ctx context.Context, conn net.Conn, sess *session.Ses
 				if err := writeAudio(conn, frame); err != nil {
 					s.logger.Warn("audiosocket write", "session", sess.ID, "error", err)
 					return
+				}
+				// Tap recorder con audio del bot. Resultado mezclado con el
+				// inbound (alternados) — calidad audible para auditoría.
+				if rec != nil {
+					rec.Append(frame)
 				}
 				buf = buf[FrameBytes:]
 				sent++

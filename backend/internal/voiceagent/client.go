@@ -49,6 +49,12 @@ type Config struct {
 
 	// AMD (Answering Machine Detection) — config tomada del bot.
 	AMD AMDConfig `json:"amd,omitempty"`
+
+	// RecordingEnabled controla si el voice-agent graba el audio de la
+	// llamada y lo sube a /api/internal/voice/recordings al cerrar. Si
+	// false, el voice-agent no toca el disco — ahorra storage y cumple
+	// requisitos de privacidad. Viene del flag tenant_settings.recording_enabled.
+	RecordingEnabled bool `json:"recordingEnabled,omitempty"`
 }
 
 // AMDConfig configura el detector de buzón del voice-agent.

@@ -129,6 +129,12 @@ func DialCall(ctx context.Context, d DialDeps, call store.Call, botID string) (D
 			d.Logger.Warn("dial: list tools failed, continuing without", "bot", botID, "error", err)
 		}
 
+		// Leer flag de grabación del tenant — el voice-agent lo respeta.
+		recordingEnabled := false
+		if ts, err := d.Store.GetTenantSettings(ctx, call.TenantID); err == nil {
+			recordingEnabled = ts.RecordingEnabled
+		}
+
 		vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		sess, err := d.VoiceAgent.CreateSession(vctx, voiceagent.Config{
 			CallID:      call.ID,
@@ -147,6 +153,7 @@ func DialCall(ctx context.Context, d DialDeps, call store.Call, botID string) (D
 				Action:  bot.AMDAction,
 				Message: bot.VoicemailMessage,
 			},
+			RecordingEnabled: recordingEnabled,
 		})
 		cancel()
 		if err != nil {
