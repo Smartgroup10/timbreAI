@@ -4,17 +4,17 @@ import "testing"
 
 func TestCostRoundsDown(t *testing.T) {
 	tab := NewTable()
-	// 30¢/min × 30s = 15¢ exactos
-	if c := tab.Cost("openai_realtime", 30); c != 15 {
-		t.Errorf("30s openai_realtime: got %d cents, want 15", c)
+	// 24¢/min × 30s = 12¢ exactos
+	if c := tab.Cost("openai_realtime", 30); c != 12 {
+		t.Errorf("30s openai_realtime: got %d cents, want 12", c)
 	}
-	// 30¢/min × 1s = 0.5¢ → 0 (round down)
+	// 24¢/min × 1s = 0.4¢ → 0 (round down)
 	if c := tab.Cost("openai_realtime", 1); c != 0 {
 		t.Errorf("1s openai_realtime: got %d cents, want 0", c)
 	}
-	// 30¢/min × 60s = 30¢
-	if c := tab.Cost("openai_realtime", 60); c != 30 {
-		t.Errorf("60s openai_realtime: got %d cents, want 30", c)
+	// 24¢/min × 60s = 24¢
+	if c := tab.Cost("openai_realtime", 60); c != 24 {
+		t.Errorf("60s openai_realtime: got %d cents, want 24", c)
 	}
 }
 

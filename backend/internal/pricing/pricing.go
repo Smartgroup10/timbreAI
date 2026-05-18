@@ -35,7 +35,12 @@ type Table struct {
 //	PRICING_ECHO_CENTS_PER_MIN=0
 func NewTable() *Table {
 	t := &Table{rates: map[string]int{
-		"openai_realtime": 30, // ~$0.30/min (4o-realtime input+output mid estimate)
+		// gpt-realtime GA (ago 2025): $32/1M audio in + $64/1M audio out.
+		// A ~31 tok/sec → ~$0.06/min in + ~$0.12/min out. En conversación
+		// realista (un lado habla a la vez) ≈ $0.18-0.24/min. Usamos 24
+		// como estimación conservadora coherente con el 20% de descuento
+		// vs gpt-4o-realtime-preview que era 30 c/min.
+		"openai_realtime": 24,
 		"deepgram":        8,  // ~$0.075/min Voice Agent flat rate, round up to 8c
 		"assemblyai":      10, // streaming + LLM hosted
 		"echo":            0,  // sandbox local, no provider cost
