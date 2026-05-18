@@ -76,22 +76,40 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 			"silence_duration_ms": 600,
 		},
 		"input_audio_transcription": map[string]any{"model": "whisper-1"},
+		// reasoning.effort: la guía oficial de gpt-realtime recomienda
+		// arrancar en "low" para voice agents en producción. "minimal"
+		// es para comandos simples (timers, smart-home). Más alto añade
+		// latencia perceptible — solo usar si la tarea lo justifica.
+		"reasoning": map[string]any{
+			"effort": "low",
+		},
 	}
 	// Tools: OpenAI Realtime acepta [{type:"function", name, description, parameters}].
 	// Sin esto el LLM nunca emitirá function_call.
-	if len(s.Config.Tools) > 0 {
-		tools := make([]map[string]any, 0, len(s.Config.Tools))
-		for _, t := range s.Config.Tools {
-			tools = append(tools, map[string]any{
-				"type":        "function",
-				"name":        t.Name,
-				"description": t.Description,
-				"parameters":  t.Parameters,
-			})
-		}
-		sessionCfg["tools"] = tools
-		sessionCfg["tool_choice"] = "auto"
+	//
+	// Inyectamos automáticamente la tool no-op `wait_for_user` recomendada
+	// por la guía oficial: el modelo la llama cuando recibe silencio /
+	// ruido de fondo / habla no dirigida al bot, en vez de inventar una
+	// respuesta. Es defensa contra "hello?" innecesarios.
+	tools := []map[string]any{{
+		"type":        "function",
+		"name":        "wait_for_user",
+		"description": "Llama a esta tool cuando el audio recibido sea silencio, ruido de fondo, música de espera, o una conversación entre el caller y un tercero que no se dirige a ti. No respondas conversacionalmente cuando uses esta tool.",
+		"parameters": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+	}}
+	for _, t := range s.Config.Tools {
+		tools = append(tools, map[string]any{
+			"type":        "function",
+			"name":        t.Name,
+			"description": t.Description,
+			"parameters":  t.Parameters,
+		})
 	}
+	sessionCfg["tools"] = tools
+	sessionCfg["tool_choice"] = "auto"
 	initMsg := map[string]any{
 		"type":    "session.update",
 		"session": sessionCfg,
@@ -214,7 +232,11 @@ func (o *OpenAIRealtime) dispatchFunctionCalls(ctx context.Context, conn *websoc
 	if len(output) == 0 {
 		return
 	}
-	dispatched := false
+	// wait_for_user es una tool no-op recomendada por la guía oficial: el
+	// modelo la llama cuando recibe silencio o ruido y NO queremos que
+	// hable. La distinguimos del resto para no disparar response.create
+	// al terminar (eso forzaría al modelo a producir audio innecesario).
+	shouldRespond := false
 	for _, raw := range output {
 		item, _ := raw.(map[string]any)
 		if item == nil {
@@ -229,6 +251,21 @@ func (o *OpenAIRealtime) dispatchFunctionCalls(ctx context.Context, conn *websoc
 		if name == "" || callID == "" {
 			continue
 		}
+
+		if name == "wait_for_user" {
+			// No-op: registramos un output vacío para cerrar el turno y
+			// dejamos al modelo en silencio esperando al siguiente audio.
+			_ = writeJSON(ctx, conn, map[string]any{
+				"type": "conversation.item.create",
+				"item": map[string]any{
+					"type":    "function_call_output",
+					"call_id": callID,
+					"output":  "{\"acknowledged\":true}",
+				},
+			})
+			continue
+		}
+
 		args := map[string]any{}
 		if argsStr != "" {
 			_ = json.Unmarshal([]byte(argsStr), &args)
@@ -250,9 +287,9 @@ func (o *OpenAIRealtime) dispatchFunctionCalls(ctx context.Context, conn *websoc
 			o.logger.Warn("openai conversation.item.create", "error", err)
 			continue
 		}
-		dispatched = true
+		shouldRespond = true
 	}
-	if dispatched {
+	if shouldRespond {
 		// Pedimos al LLM que produzca la siguiente respuesta consumiendo los
 		// outputs. Sin response.create el modelo se queda esperando.
 		_ = writeJSON(ctx, conn, map[string]any{"type": "response.create"})

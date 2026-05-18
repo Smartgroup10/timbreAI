@@ -83,8 +83,11 @@ func Load() (Config, error) {
 
 		OpenAI: OpenAIConfig{
 			APIKey: openaiKey,
-			Model:  env("OPENAI_REALTIME_MODEL", "gpt-4o-realtime-preview-2024-12-17"),
-			Voice:  env("OPENAI_REALTIME_VOICE", "alloy"),
+			// gpt-realtime es el modelo GA (agosto 2025), reemplaza al preview.
+			// 20% más barato y mejor instruction following / tool use. Voz "marin"
+			// (la nueva voz de gpt-realtime) — fallback a "alloy" sigue valiendo.
+			Model: env("OPENAI_REALTIME_MODEL", "gpt-realtime"),
+			Voice: env("OPENAI_REALTIME_VOICE", "marin"),
 		},
 		Deepgram: DeepgramConfig{
 			APIKey:        env("DEEPGRAM_API_KEY", ""),
