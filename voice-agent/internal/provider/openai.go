@@ -117,6 +117,11 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 	if err := writeJSON(ctx, conn, initMsg); err != nil {
 		return err
 	}
+	o.logger.Info("openai session.update sent",
+		"session", s.ID,
+		"model", model,
+		"voice", voice,
+		"tools_count", len(s.Config.Tools))
 
 	// Disparar el greeting: response.create hace que el modelo hable PRIMERO
 	// (usando las instructions del system prompt). Sin esto el agente espera
@@ -172,6 +177,17 @@ func (o *OpenAIRealtime) pumpAudioIn(ctx context.Context, conn *websocket.Conn, 
 func (o *OpenAIRealtime) handleEvent(ctx context.Context, conn *websocket.Conn, msg map[string]any, s *session.Session) {
 	t, _ := msg["type"].(string)
 	switch t {
+	case "session.created":
+		o.logger.Info("openai session.created", "session", s.ID)
+	case "session.updated":
+		o.logger.Info("openai session.updated", "session", s.ID)
+	case "response.created":
+		o.logger.Debug("openai response.created", "session", s.ID)
+	case "rate_limits.updated":
+		// Verbose pero útil para detectar throttling. Lo dejamos en debug.
+		o.logger.Debug("openai rate_limits", "session", s.ID)
+	}
+	switch t {
 	case "response.audio.delta":
 		// base64 g711_ulaw 8 kHz mono. AudioSocket espera slin (8 kHz signed
 		// linear 16-bit), así que convertimos antes de pushear a AudioOut.
@@ -215,7 +231,22 @@ func (o *OpenAIRealtime) handleEvent(ctx context.Context, conn *websocket.Conn, 
 		// arguments completo en el item.
 		o.dispatchFunctionCalls(ctx, conn, s, msg)
 	case "error":
-		emit(s, session.Event{Type: "error", Message: jsonString(msg, "error", "message")})
+		// Loggeamos el evento completo — el cliente solo recibe el msg pero
+		// para diagnosticar el bot mudo en producción necesitamos saber
+		// también el code y type del error de OpenAI. Si el session.update
+		// tiene un campo no aceptado, OpenAI manda type=invalid_request_error
+		// y la session queda inservible.
+		errMsg := jsonString(msg, "error", "message")
+		errType := jsonString(msg, "error", "type")
+		errCode := jsonString(msg, "error", "code")
+		errParam := jsonString(msg, "error", "param")
+		o.logger.Warn("openai error event",
+			"session", s.ID,
+			"message", errMsg,
+			"type", errType,
+			"code", errCode,
+			"param", errParam)
+		emit(s, session.Event{Type: "error", Message: errMsg})
 	}
 }
 

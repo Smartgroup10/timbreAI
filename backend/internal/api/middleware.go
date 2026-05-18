@@ -1,6 +1,9 @@
 package api
 
 import (
+	"bufio"
+	"errors"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -56,6 +59,33 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack expone Hijack() del ResponseWriter subyacente si lo implementa.
+// Sin este método, statusRecorder (que envuelve w) "esconde" el método
+// Hijack y los upgrades a WebSocket fallan con:
+//
+//	"http.ResponseWriter does not implement http.Hijacker"
+//
+// Síntoma: /api/realtime devuelve 501 y no se puede establecer el
+// WebSocket de eventos en tiempo real. El indicador "Live" del sidebar
+// queda gris para todos los usuarios. Bug introducido al envolver el
+// writer en el middleware de logging sin propagar Hijacker.
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("underlying ResponseWriter does not implement http.Hijacker")
+	}
+	return h.Hijack()
+}
+
+// Flush también la propagamos por si algún handler usa SSE u otro
+// streaming text — no es necesaria hoy pero evita romper futuras
+// integraciones en el mismo middleware.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
