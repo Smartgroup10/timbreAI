@@ -71,34 +71,24 @@ func (e *ElevenLabs) Run(ctx context.Context, s *session.Session) error {
 	defer conn.Close(websocket.StatusNormalClosure, "session_end")
 	conn.SetReadLimit(10 * 1024 * 1024)
 
-	// conversation_initiation_client_data permite override del system_prompt
-	// y de TTS settings. El agent_id ya trae su config base; aquí solo
-	// reemplazamos lo dinámico (lead_name, objective, idioma de respuesta).
+	// conversation_initiation_client_data inicia la sesión. Por defecto
+	// NO overrideamos nada — el agente del dashboard maneja todo (voz,
+	// system prompt, LLM, tools, idioma).
 	//
-	// Schema oficial:
-	//   conversation_config_override: { agent: { prompt: { prompt: "..." },
-	//                                          first_message, language },
-	//                                   tts: { voice_id } }
+	// Por qué: ElevenLabs RECHAZA con StatusPolicyViolation cualquier
+	// override de campos que el operador no haya habilitado explícitamente
+	// en el dashboard del agente (Security → Authentication → Overrides
+	// allowed). El default es nada permitido, así que cualquier intento
+	// de pasar prompt/language/voice cierra la WS al instante con:
 	//
-	// Para no romper la config del operador en el dashboard, solo
-	// overrideamos prompt si tenemos uno y dejamos voice/LLM en sus
-	// defaults del agente.
+	//   "Override for field 'prompt' is not allowed by config."
+	//
+	// Resultado: el bot no habla y la sesión muere antes de empezar.
+	// Si el operador quiere overrides, debe habilitarlos en el dashboard
+	// de ElevenLabs y nosotros activarlos opcionalmente — TODO futuro,
+	// no es bloqueante hoy.
 	initData := map[string]any{
 		"type": "conversation_initiation_client_data",
-	}
-	overrides := map[string]any{}
-	agentOverride := map[string]any{}
-	if prompt := SystemPrompt(s.Config); prompt != "" {
-		agentOverride["prompt"] = map[string]any{"prompt": prompt}
-	}
-	if s.Config.Language != "" {
-		agentOverride["language"] = elevenlabsLang(s.Config.Language)
-	}
-	if len(agentOverride) > 0 {
-		overrides["agent"] = agentOverride
-	}
-	if len(overrides) > 0 {
-		initData["conversation_config_override"] = overrides
 	}
 	if err := writeJSON(ctx, conn, initData); err != nil {
 		return err
@@ -298,23 +288,7 @@ func (e *ElevenLabs) handleToolCall(ctx context.Context, conn *websocket.Conn, r
 	}
 }
 
-// elevenlabsLang normaliza el locale ("es-ES" → "es") a ISO 639-1.
-// Mismo enfoque que deepgramLang para mantener consistencia entre
-// providers.
-func elevenlabsLang(locale string) string {
-	if i := indexAny(locale, "-_"); i > 0 {
-		return locale[:i]
-	}
-	return locale
-}
-
-func indexAny(s, chars string) int {
-	for i, c := range s {
-		for _, ch := range chars {
-			if c == ch {
-				return i
-			}
-		}
-	}
-	return -1
-}
+// elevenlabsLang/indexAny: helpers que usábamos para el override de
+// idioma. Eliminados al simplificar la inicialización (no overrideamos
+// nada por defecto). Si reactivamos overrides en futuras iteraciones,
+// recuperar de git history.
