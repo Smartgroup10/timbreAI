@@ -82,6 +82,12 @@ type Credentials struct {
 	AssemblyAIAPIKey   string `json:"assemblyaiApiKey,omitempty"`
 	AssemblyAIVoice    string `json:"assemblyaiVoice,omitempty"`
 	AssemblyAIGreeting string `json:"assemblyaiGreeting,omitempty"`
+
+	// ElevenLabs Conversational AI. AgentID se configura por bot (no
+	// es per-tenant) y va aquí para que el provider lo resuelva como
+	// los demás.
+	ElevenLabsAPIKey  string `json:"elevenlabsApiKey,omitempty"`
+	ElevenLabsAgentID string `json:"elevenlabsAgentId,omitempty"`
 }
 
 // Session is the in-memory representation of a live voice conversation. The provider's Run loop

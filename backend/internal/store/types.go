@@ -66,6 +66,11 @@ type Bot struct {
 	AMDEnabled       bool   `json:"amdEnabled"`
 	AMDAction        string `json:"amdAction"` // hangup | drop_message | continue
 	VoicemailMessage string `json:"voicemailMessage"`
+
+	// ElevenLabs Conversational AI — agent_id del dashboard. Solo aplica
+	// si VoiceProvider == "elevenlabs". El resto de config del agente
+	// (voz, prompt, LLM, tools) se gestiona en el dashboard de ElevenLabs.
+	ElevenLabsAgentID string `json:"elevenlabsAgentId,omitempty"`
 }
 
 type SIPTrunk struct {

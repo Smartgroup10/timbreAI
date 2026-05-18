@@ -448,6 +448,9 @@ func handleInbound(
 		return call, fmt.Errorf("voice-agent disabled")
 	}
 	creds := loadTenantVoiceCreds(ctx, st, route.TenantID, logger)
+	// El agent_id de ElevenLabs es per-bot, no per-tenant — lo añadimos
+	// aquí tras cargar las credenciales generales del tenant.
+	creds.ElevenLabsAgentID = bot.ElevenLabsAgentID
 	tools := loadBotTools(ctx, st, route.TenantID, decision.BotID, logger)
 	vctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -511,6 +514,9 @@ func loadTenantVoiceCreds(ctx context.Context, st *store.Store, tenantID string,
 		AssemblyAIAPIKey:      vc.AssemblyAIAPIKey,
 		AssemblyAIVoice:       vc.AssemblyAIVoice,
 		AssemblyAIGreeting:    vc.AssemblyAIGreeting,
+		ElevenLabsAPIKey:      vc.ElevenLabsAPIKey,
+		// ElevenLabsAgentID se setea por separado tras este return,
+		// con el agent_id del bot resuelto en el caller.
 	}
 }
 

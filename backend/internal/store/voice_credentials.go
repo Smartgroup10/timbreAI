@@ -36,13 +36,18 @@ type VoiceCredentials struct {
 	AssemblyAIAPIKey   string `json:"assemblyaiApiKey"`
 	AssemblyAIVoice    string `json:"assemblyaiVoice"`
 	AssemblyAIGreeting string `json:"assemblyaiGreeting"`
+
+	// ElevenLabs Conversational AI — solo la API key. La voz, system
+	// prompt, LLM y tools se gestionan en el dashboard de ElevenLabs,
+	// y cada bot apunta a un agent_id concreto (Bot.ElevenLabsAgentID).
+	ElevenLabsAPIKey string `json:"elevenlabsApiKey"`
 }
 
 // GetVoiceCredentials returns the row, lazily creating defaults if it's missing.
 // Descifra las API keys con la master key de Store.
 func (s *Store) GetVoiceCredentials(ctx context.Context, tenantID string) (VoiceCredentials, error) {
 	var c VoiceCredentials
-	var openaiEnc, deepgramEnc, assemblyEnc []byte
+	var openaiEnc, deepgramEnc, assemblyEnc, elevenlabsEnc []byte
 	err := s.pool.QueryRow(ctx, `
 		WITH ensured AS (
 		  INSERT INTO tenant_voice_credentials (tenant_id)
@@ -52,13 +57,15 @@ func (s *Store) GetVoiceCredentials(ctx context.Context, tenantID string) (Voice
 		       openai_api_key_enc, openai_realtime_model, openai_realtime_voice,
 		       deepgram_api_key_enc, deepgram_listen_model, deepgram_think_provider,
 		       deepgram_think_model, deepgram_speak_model, deepgram_greeting,
-		       assemblyai_api_key_enc, assemblyai_voice, assemblyai_greeting
+		       assemblyai_api_key_enc, assemblyai_voice, assemblyai_greeting,
+		       elevenlabs_api_key_enc
 		FROM tenant_voice_credentials WHERE tenant_id = $1`, tenantID).
 		Scan(&c.TenantID,
 			&openaiEnc, &c.OpenAIRealtimeModel, &c.OpenAIRealtimeVoice,
 			&deepgramEnc, &c.DeepgramListenModel, &c.DeepgramThinkProvider,
 			&c.DeepgramThinkModel, &c.DeepgramSpeakModel, &c.DeepgramGreeting,
-			&assemblyEnc, &c.AssemblyAIVoice, &c.AssemblyAIGreeting)
+			&assemblyEnc, &c.AssemblyAIVoice, &c.AssemblyAIGreeting,
+			&elevenlabsEnc)
 	if err != nil {
 		return c, err
 	}
@@ -70,6 +77,9 @@ func (s *Store) GetVoiceCredentials(ctx context.Context, tenantID string) (Voice
 	}
 	if c.AssemblyAIAPIKey, err = s.decryptOrEmpty(assemblyEnc); err != nil {
 		return c, fmt.Errorf("decrypt assemblyai key: %w", err)
+	}
+	if c.ElevenLabsAPIKey, err = s.decryptOrEmpty(elevenlabsEnc); err != nil {
+		return c, fmt.Errorf("decrypt elevenlabs key: %w", err)
 	}
 	return c, nil
 }
@@ -89,6 +99,8 @@ type VoiceCredentialsPatch struct {
 	AssemblyAIAPIKey   *string `json:"assemblyaiApiKey,omitempty"`
 	AssemblyAIVoice    *string `json:"assemblyaiVoice,omitempty"`
 	AssemblyAIGreeting *string `json:"assemblyaiGreeting,omitempty"`
+
+	ElevenLabsAPIKey *string `json:"elevenlabsApiKey,omitempty"`
 }
 
 func (s *Store) UpdateVoiceCredentials(ctx context.Context, tenantID string, p VoiceCredentialsPatch) (VoiceCredentials, error) {
@@ -139,6 +151,9 @@ func (s *Store) UpdateVoiceCredentials(ctx context.Context, tenantID string, p V
 	}
 	addText("assemblyai_voice", p.AssemblyAIVoice)
 	addText("assemblyai_greeting", p.AssemblyAIGreeting)
+	if err := addSecret("elevenlabs_api_key_enc", p.ElevenLabsAPIKey); err != nil {
+		return VoiceCredentials{}, fmt.Errorf("encrypt elevenlabs key: %w", err)
+	}
 	q := "UPDATE tenant_voice_credentials SET " + strings.Join(set, ", ") + " WHERE tenant_id = $1"
 	if _, err := s.pool.Exec(ctx, q, args...); err != nil {
 		return VoiceCredentials{}, err
@@ -165,6 +180,7 @@ func (c VoiceCredentials) Masked() VoiceCredentials {
 	mc.OpenAIAPIKey = maskSecret(c.OpenAIAPIKey)
 	mc.DeepgramAPIKey = maskSecret(c.DeepgramAPIKey)
 	mc.AssemblyAIAPIKey = maskSecret(c.AssemblyAIAPIKey)
+	mc.ElevenLabsAPIKey = maskSecret(c.ElevenLabsAPIKey)
 	return mc
 }
 

@@ -72,6 +72,8 @@ export type Bot = {
   amdEnabled?: boolean;
   amdAction?: "hangup" | "drop_message" | "continue";
   voicemailMessage?: string;
+  // ElevenLabs Conversational AI — solo si voiceProvider === "elevenlabs"
+  elevenlabsAgentId?: string;
 };
 
 export type SIPTrunk = {
@@ -199,6 +201,7 @@ export type VoiceCredentials = {
   assemblyaiApiKey: string;
   assemblyaiVoice: string;
   assemblyaiGreeting: string;
+  elevenlabsApiKey: string;
 };
 
 export type TenantSettings = {

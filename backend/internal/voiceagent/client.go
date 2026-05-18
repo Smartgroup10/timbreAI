@@ -82,6 +82,9 @@ type Credentials struct {
 	AssemblyAIAPIKey   string `json:"assemblyaiApiKey,omitempty"`
 	AssemblyAIVoice    string `json:"assemblyaiVoice,omitempty"`
 	AssemblyAIGreeting string `json:"assemblyaiGreeting,omitempty"`
+
+	ElevenLabsAPIKey  string `json:"elevenlabsApiKey,omitempty"`
+	ElevenLabsAgentID string `json:"elevenlabsAgentId,omitempty"`
 }
 
 type Session struct {

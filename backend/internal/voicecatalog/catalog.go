@@ -85,4 +85,19 @@ var All = []Provider{
 			{ID: "tyler", Label: "Tyler (masculino joven)"},
 		},
 	},
+	{
+		ID:    "elevenlabs",
+		Label: "ElevenLabs Conversational AI",
+		// La voz, el modelo LLM y el system prompt se configuran en
+		// el dashboard de ElevenLabs por agente. Aquí solo damos un
+		// placeholder en Models — la opción real es el agent_id que
+		// el operador pega manualmente en el bot.
+		Models: []Option{
+			{ID: "agent", Label: "Agent (configurado en dashboard de ElevenLabs)"},
+		},
+		Voices: []Option{
+			{ID: "default", Label: "Voz del agente (definida en el dashboard)"},
+		},
+		ExtraFields: []string{"elevenlabs_agent_id"},
+	},
 }

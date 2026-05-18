@@ -85,3 +85,48 @@ func DownsampleSlin24kTo8k(src []byte) []byte {
 	}
 	return out
 }
+
+// UpsampleSlin8kTo16k convierte slin 8 kHz a 16 kHz mediante interpolación
+// lineal. Ratio 1:2 — más simple que el 1:3 de 24k. La salida tiene 2× los
+// samples del input. ElevenLabs Conversational AI espera PCM 16k.
+func UpsampleSlin8kTo16k(src []byte) []byte {
+	n := len(src) / 2
+	if n == 0 {
+		return nil
+	}
+	out := make([]byte, n*2*2)
+	for i := 0; i < n; i++ {
+		s0 := int16(binary.LittleEndian.Uint16(src[2*i : 2*i+2]))
+		var s1 int16
+		if i+1 < n {
+			s1 = int16(binary.LittleEndian.Uint16(src[2*(i+1) : 2*(i+1)+2]))
+		} else {
+			s1 = s0
+		}
+		// pos 0: s0
+		// pos 1: (s0 + s1) / 2 — punto medio
+		base := i * 2 * 2
+		binary.LittleEndian.PutUint16(out[base:base+2], uint16(s0))
+		mid := int16((int32(s0) + int32(s1)) / 2)
+		binary.LittleEndian.PutUint16(out[base+2:base+4], uint16(mid))
+	}
+	return out
+}
+
+// DownsampleSlin16kTo8k convierte slin 16 kHz a 8 kHz promediando pares de
+// samples. La salida tiene la mitad de samples del input.
+func DownsampleSlin16kTo8k(src []byte) []byte {
+	n := len(src) / 2
+	outN := n / 2
+	if outN == 0 {
+		return nil
+	}
+	out := make([]byte, outN*2)
+	for i := 0; i < outN; i++ {
+		s0 := int32(int16(binary.LittleEndian.Uint16(src[(2*i+0)*2 : (2*i+0)*2+2])))
+		s1 := int32(int16(binary.LittleEndian.Uint16(src[(2*i+1)*2 : (2*i+1)*2+2])))
+		avg := int16((s0 + s1) / 2)
+		binary.LittleEndian.PutUint16(out[i*2:i*2+2], uint16(avg))
+	}
+	return out
+}

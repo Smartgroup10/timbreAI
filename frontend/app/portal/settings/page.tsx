@@ -681,6 +681,18 @@ function VoiceCredentialsPanel({ tenant, canManage }: { tenant: string | undefin
           ]}
           setField={setField}
         />
+        <ProviderBlock
+          title="ElevenLabs Conversational AI"
+          providerId="elevenlabs"
+          tenant={tenant}
+          subtitle="Agents pre-configurados en el dashboard de ElevenLabs. Pega el agent_id en cada bot."
+          c={c}
+          draft={draft}
+          fields={[
+            { key: "elevenlabsApiKey", label: "API key ElevenLabs", type: "password", placeholder: "sk_..." },
+          ]}
+          setField={setField}
+        />
       </div>
     </section>
   );

@@ -53,6 +53,10 @@ func NewTable() *Table {
 		// igual que Deepgram Standard. Custom tier por contrato (variable).
 		// El antiguo valor 10 c/min era una estimación obsoleta.
 		"assemblyai": 8,
+		// ElevenLabs Conversational AI Agents: $0.08-$0.12/min según
+		// LLM del agente. Default 10 c/min (mid-range). Para agentes que
+		// usan GPT-4o premium debería ser 12 c/min; los voice-only 8 c/min.
+		"elevenlabs": 10,
 		"echo":       0, // sandbox local, no provider cost
 	}}
 	for prov := range t.rates {

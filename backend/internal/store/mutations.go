@@ -137,17 +137,18 @@ func (s *Store) getLead(ctx context.Context, tenantID, id string) (Lead, error) 
 // --- Bot mutations ---
 
 type BotPatch struct {
-	Name             *string
-	Type             *string
-	Language         *string
-	Voice            *string
-	Status           *string
-	Objective        *string
-	Guardrails       *[]string
-	VoiceProvider    *string
-	AMDEnabled       *bool
-	AMDAction        *string
-	VoicemailMessage *string
+	Name              *string
+	Type              *string
+	Language          *string
+	Voice             *string
+	Status            *string
+	Objective         *string
+	Guardrails        *[]string
+	VoiceProvider     *string
+	AMDEnabled        *bool
+	AMDAction         *string
+	VoicemailMessage  *string
+	ElevenLabsAgentID *string
 }
 
 func (s *Store) CreateBot(ctx context.Context, b Bot) (Bot, error) {
@@ -203,6 +204,7 @@ func (s *Store) UpdateBot(ctx context.Context, tenantID, id string, p BotPatch) 
 	add("voice_provider", p.VoiceProvider)
 	add("amd_action", p.AMDAction)
 	add("voicemail_message", p.VoicemailMessage)
+	add("elevenlabs_agent_id", p.ElevenLabsAgentID)
 	if p.AMDEnabled != nil {
 		args = append(args, *p.AMDEnabled)
 		set = append(set, "amd_enabled = $"+itoa(len(args)))

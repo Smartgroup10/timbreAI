@@ -145,6 +145,7 @@ func NewRegistry(cfg config.Config, logger *slog.Logger) *Registry {
 	r.register(NewOpenAIRealtime(cfg.OpenAI, logger))
 	r.register(NewDeepgram(cfg.Deepgram, logger))
 	r.register(NewAssemblyAI(cfg.AssemblyAI, logger))
+	r.register(NewElevenLabs(cfg.ElevenLabs, logger))
 	return r
 }
 

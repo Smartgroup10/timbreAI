@@ -61,4 +61,23 @@ func TestEmptyInputs(t *testing.T) {
 	if r := DownsampleSlin24kTo8k(nil); r != nil {
 		t.Errorf("nil input should return nil, got %d bytes", len(r))
 	}
+	if r := UpsampleSlin8kTo16k(nil); r != nil {
+		t.Errorf("nil input should return nil, got %d bytes", len(r))
+	}
+	if r := DownsampleSlin16kTo8k(nil); r != nil {
+		t.Errorf("nil input should return nil, got %d bytes", len(r))
+	}
+}
+
+// TestResample16kRatio: 320B (8k 20ms) → 640B (16k 20ms) y vuelta.
+func TestResample16kRatio(t *testing.T) {
+	in8k := make([]byte, 320)
+	out16k := UpsampleSlin8kTo16k(in8k)
+	if len(out16k) != 640 {
+		t.Fatalf("upsample 8k→16k: got %d B, want 640", len(out16k))
+	}
+	out8k := DownsampleSlin16kTo8k(out16k)
+	if len(out8k) != 320 {
+		t.Fatalf("downsample 16k→8k: got %d B, want 320", len(out8k))
+	}
 }

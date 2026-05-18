@@ -19,6 +19,7 @@ type Config struct {
 	OpenAI      OpenAIConfig
 	Deepgram    DeepgramConfig
 	AssemblyAI  AssemblyAIConfig
+	ElevenLabs  ElevenLabsConfig
 }
 
 // AudioSocketConfig describe el servidor TCP que recibe audio slin de Asterisk
@@ -59,6 +60,16 @@ type AssemblyAIConfig struct {
 	APIKey   string
 	Voice    string // ivy, james, tyler, ...
 	Greeting string
+}
+
+// ElevenLabsConfig conecta con la API de Conversational AI Agents
+// (wss://api.elevenlabs.io/v1/convai/conversation?agent_id=...).
+// El AGENTE se configura PREVIAMENTE en el dashboard de ElevenLabs
+// (voz, system prompt, LLM, tools) — nosotros solo pasamos su id y
+// overrideamos lo que haga falta por sesión.
+type ElevenLabsConfig struct {
+	APIKey  string // key para signed URLs (agentes privados)
+	AgentID string // default; el bot puede tener su propio agent_id
 }
 
 func Load() (Config, error) {
@@ -105,6 +116,10 @@ func Load() (Config, error) {
 			APIKey:   env("ASSEMBLYAI_API_KEY", ""),
 			Voice:    env("ASSEMBLYAI_VOICE", "ivy"),
 			Greeting: env("ASSEMBLYAI_GREETING", ""),
+		},
+		ElevenLabs: ElevenLabsConfig{
+			APIKey:  env("ELEVENLABS_API_KEY", ""),
+			AgentID: env("ELEVENLABS_AGENT_ID", ""),
 		},
 	}
 	_ = openaiKey // OpenAI key still consumed by the OpenAI provider via cfg.OpenAI.APIKey.

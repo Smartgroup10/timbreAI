@@ -287,6 +287,7 @@ function BotEditor({
     (bot?.amdAction as "hangup" | "drop_message" | "continue") ?? "hangup",
   );
   const [voicemailMessage, setVoicemailMessage] = useState(bot?.voicemailMessage ?? "");
+  const [elevenlabsAgentId, setElevenlabsAgentId] = useState(bot?.elevenlabsAgentId ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   // Catálogo estático de providers/voces (servido por backend) + qué providers
@@ -306,6 +307,7 @@ function BotEditor({
         if (creds.openaiApiKey) enabled.add("openai_realtime");
         if (creds.deepgramApiKey) enabled.add("deepgram");
         if (creds.assemblyaiApiKey) enabled.add("assemblyai");
+        if (creds.elevenlabsApiKey) enabled.add("elevenlabs");
         setEnabledProviders(enabled);
       } catch {
         // ignore — fallback al sandbox echo
@@ -358,6 +360,7 @@ function BotEditor({
         name, type, language, voice, status, objective, voiceProvider,
         guardrails: guardrailsArray,
         amdEnabled, amdAction, voicemailMessage,
+        elevenlabsAgentId,
       };
       if (mode === "create") {
         await api.createBot(payload, tenant);
@@ -474,6 +477,20 @@ function BotEditor({
                   : t("bots.editor.provider.disabled.hint", { provider: currentProvider?.label ?? voiceProvider })}
               </p>
             </div>
+
+            {voiceProvider === "elevenlabs" ? (
+              <div className="field">
+                <label>{t("bots.editor.elevenlabs.agent_id")}</label>
+                <input
+                  value={elevenlabsAgentId}
+                  onChange={(e) => setElevenlabsAgentId(e.target.value)}
+                  placeholder="agent_..."
+                />
+                <p className="subtle" style={{ fontSize: 12, marginTop: 4 }}>
+                  {t("bots.editor.elevenlabs.agent_id.hint")}
+                </p>
+              </div>
+            ) : null}
           </BotSection>
 
           <BotSection title={t("bots.editor.section.behavior")}>

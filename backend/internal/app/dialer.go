@@ -95,6 +95,9 @@ func DialCall(ctx context.Context, d DialDeps, call store.Call, botID string) (D
 				AssemblyAIAPIKey:      vc.AssemblyAIAPIKey,
 				AssemblyAIVoice:       vc.AssemblyAIVoice,
 				AssemblyAIGreeting:    vc.AssemblyAIGreeting,
+				ElevenLabsAPIKey:      vc.ElevenLabsAPIKey,
+				// El agent_id es per-bot, no per-tenant
+				ElevenLabsAgentID: bot.ElevenLabsAgentID,
 			}
 		}
 		hasCreds := true
