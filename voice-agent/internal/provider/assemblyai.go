@@ -93,10 +93,10 @@ func (a *AssemblyAI) Run(ctx context.Context, s *session.Session) error {
 				"voice":  voice,
 				"format": map[string]any{"encoding": "pcm_s16le"},
 			},
-			// Tools: idéntica forma que OpenAI Realtime. Inyectamos
-			// también la no-op wait_for_user para silencios/ruido.
-			"tools": buildAssemblyAITools(s.Config.Tools),
 		},
+	}
+	if tools := buildAssemblyAITools(s.Config.Tools); len(tools) > 0 {
+		settings["session"].(map[string]any)["tools"] = tools
 	}
 	if err := writeJSON(ctx, conn, settings); err != nil {
 		return err
@@ -271,15 +271,6 @@ func (a *AssemblyAI) handleToolCall(ctx context.Context, conn *websocket.Conn, r
 		}
 	}
 
-	if ev.Name == "wait_for_user" {
-		_ = writeJSON(ctx, conn, map[string]any{
-			"type":   "tool.result",
-			"id":     ev.ID,
-			"result": map[string]any{"acknowledged": true},
-		})
-		return
-	}
-
 	content, ok := s.InvokeTool(ctx, ev.Name, args)
 	if !ok {
 		a.logger.Warn("assemblyai tool invoke failed", "tool", ev.Name)
@@ -292,18 +283,18 @@ func (a *AssemblyAI) handleToolCall(ctx context.Context, conn *websocket.Conn, r
 }
 
 // buildAssemblyAITools convierte las tools de la sesión al schema que
-// espera AssemblyAI en session.update. Inyectamos también wait_for_user
-// como no-op (la guía oficial recomienda la equivalente — mismo
-// principio que en OpenAI Realtime).
+// espera AssemblyAI en session.update.
+//
+// NOTA: la no-op wait_for_user (recomendada por la guía oficial de
+// OpenAI y aplicable a otros providers) la quitamos por ahora — en
+// OpenAI causaba que el bot no produjera el greeting inicial porque
+// el modelo decidía llamar wait_for_user al no haber audio del user
+// todavía. Reactivar cuando podamos forzar tool_choice por turno.
 func buildAssemblyAITools(sessTools []session.Tool) []map[string]any {
-	tools := []map[string]any{{
-		"name":        "wait_for_user",
-		"description": "Llama a esta tool cuando el audio recibido sea silencio, ruido de fondo, música de espera, o una conversación entre el caller y un tercero que no se dirige a ti. No respondas conversacionalmente cuando uses esta tool.",
-		"parameters": map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
-	}}
+	if len(sessTools) == 0 {
+		return nil
+	}
+	tools := make([]map[string]any, 0, len(sessTools))
 	for _, t := range sessTools {
 		tools = append(tools, map[string]any{
 			"name":        t.Name,

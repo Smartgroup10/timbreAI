@@ -88,7 +88,7 @@ func SystemPrompt(cfg session.Config) string {
 	b.WriteString("- Responde solo a audio o texto claro.\n")
 	b.WriteString("- Si el audio del usuario no es claro, pide aclaración con una frase corta (\"¿Podrías repetirlo, por favor?\").\n")
 	b.WriteString("- No repitas la misma aclaración dos veces seguidas.\n")
-	b.WriteString("- Si solo hay silencio o ruido de fondo, no respondas — llama a la tool `wait_for_user` si está disponible.\n\n")
+	b.WriteString("- Si solo hay silencio o ruido de fondo, no respondas.\n\n")
 
 	// ─── Entity Capture ──────────────────────────────────────────────
 	// Patrón recomendado para teléfonos, emails y otros identificadores.

@@ -42,7 +42,11 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 	url := "wss://api.openai.com/v1/realtime?model=" + model
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer "+apiKey)
-	headers.Set("OpenAI-Beta", "realtime=v1")
+	// NO añadir "OpenAI-Beta: realtime=v1" — la doc oficial de GA dice
+	// literalmente "Remove the OpenAI-Beta: realtime=v1 header when
+	// calling the GA interface". Con el header, OpenAI sirve el endpoint
+	// preview que no entiende los Settings nuevos y la sesión nunca
+	// arranca (el bot no habla). Encontrado tras debugging en producción.
 
 	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
@@ -86,29 +90,26 @@ func (o *OpenAIRealtime) Run(ctx context.Context, s *session.Session) error {
 	// Tools: OpenAI Realtime acepta [{type:"function", name, description, parameters}].
 	// Sin esto el LLM nunca emitirá function_call.
 	//
-	// Inyectamos automáticamente la tool no-op `wait_for_user` recomendada
-	// por la guía oficial: el modelo la llama cuando recibe silencio /
-	// ruido de fondo / habla no dirigida al bot, en vez de inventar una
-	// respuesta. Es defensa contra "hello?" innecesarios.
-	tools := []map[string]any{{
-		"type":        "function",
-		"name":        "wait_for_user",
-		"description": "Llama a esta tool cuando el audio recibido sea silencio, ruido de fondo, música de espera, o una conversación entre el caller y un tercero que no se dirige a ti. No respondas conversacionalmente cuando uses esta tool.",
-		"parameters": map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
-	}}
-	for _, t := range s.Config.Tools {
-		tools = append(tools, map[string]any{
-			"type":        "function",
-			"name":        t.Name,
-			"description": t.Description,
-			"parameters":  t.Parameters,
-		})
+	// NOTA sobre wait_for_user: la guía oficial la recomienda como no-op
+	// para silencios mid-conversación. La habíamos inyectado pero
+	// interfería con el greeting inicial: al hacer response.create el
+	// modelo a veces decidía llamar wait_for_user (porque "no hay audio
+	// del user todavía") en vez de saludar → bot mudo. La reactivaremos
+	// cuando podamos forzar tool_choice por turno (greeting con none,
+	// resto con auto).
+	if len(s.Config.Tools) > 0 {
+		tools := make([]map[string]any, 0, len(s.Config.Tools))
+		for _, t := range s.Config.Tools {
+			tools = append(tools, map[string]any{
+				"type":        "function",
+				"name":        t.Name,
+				"description": t.Description,
+				"parameters":  t.Parameters,
+			})
+		}
+		sessionCfg["tools"] = tools
+		sessionCfg["tool_choice"] = "auto"
 	}
-	sessionCfg["tools"] = tools
-	sessionCfg["tool_choice"] = "auto"
 	initMsg := map[string]any{
 		"type":    "session.update",
 		"session": sessionCfg,
@@ -231,11 +232,7 @@ func (o *OpenAIRealtime) dispatchFunctionCalls(ctx context.Context, conn *websoc
 	if len(output) == 0 {
 		return
 	}
-	// wait_for_user es una tool no-op recomendada por la guía oficial: el
-	// modelo la llama cuando recibe silencio o ruido y NO queremos que
-	// hable. La distinguimos del resto para no disparar response.create
-	// al terminar (eso forzaría al modelo a producir audio innecesario).
-	shouldRespond := false
+	dispatched := false
 	for _, raw := range output {
 		item, _ := raw.(map[string]any)
 		if item == nil {
@@ -248,20 +245,6 @@ func (o *OpenAIRealtime) dispatchFunctionCalls(ctx context.Context, conn *websoc
 		callID, _ := item["call_id"].(string)
 		argsStr, _ := item["arguments"].(string)
 		if name == "" || callID == "" {
-			continue
-		}
-
-		if name == "wait_for_user" {
-			// No-op: registramos un output vacío para cerrar el turno y
-			// dejamos al modelo en silencio esperando al siguiente audio.
-			_ = writeJSON(ctx, conn, map[string]any{
-				"type": "conversation.item.create",
-				"item": map[string]any{
-					"type":    "function_call_output",
-					"call_id": callID,
-					"output":  "{\"acknowledged\":true}",
-				},
-			})
 			continue
 		}
 
@@ -286,9 +269,9 @@ func (o *OpenAIRealtime) dispatchFunctionCalls(ctx context.Context, conn *websoc
 			o.logger.Warn("openai conversation.item.create", "error", err)
 			continue
 		}
-		shouldRespond = true
+		dispatched = true
 	}
-	if shouldRespond {
+	if dispatched {
 		// Pedimos al LLM que produzca la siguiente respuesta consumiendo los
 		// outputs. Sin response.create el modelo se queda esperando.
 		_ = writeJSON(ctx, conn, map[string]any{"type": "response.create"})
