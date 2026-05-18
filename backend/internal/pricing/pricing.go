@@ -41,9 +41,16 @@ func NewTable() *Table {
 		// como estimación conservadora coherente con el 20% de descuento
 		// vs gpt-4o-realtime-preview que era 30 c/min.
 		"openai_realtime": 24,
-		"deepgram":        8,  // ~$0.075/min Voice Agent flat rate, round up to 8c
-		"assemblyai":      10, // streaming + LLM hosted
-		"echo":            0,  // sandbox local, no provider cost
+		// Deepgram Voice Agent — Standard tier Pay As You Go: $0.075/min.
+		// Lo redondeamos a 8 c/min hacia arriba (8 c × 60s/60 = 8 c/min ≈
+		// $0.08, ligeramente conservador). Si el operador usa el tier
+		// Custom BYO LLM ($0.056) o Advanced ($0.163), debería ajustar
+		// PRICING_DEEPGRAM_CENTS_PER_MIN por env. NOTA: con BYO LLM además
+		// se paga aparte al LLM provider (OpenAI/Anthropic) — eso no entra
+		// en este flat rate.
+		"deepgram":   8,
+		"assemblyai": 10, // streaming + LLM hosted
+		"echo":       0,  // sandbox local, no provider cost
 	}}
 	for prov := range t.rates {
 		envKey := "PRICING_" + strings.ToUpper(prov) + "_CENTS_PER_MIN"

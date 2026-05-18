@@ -114,21 +114,29 @@ func (d *Deepgram) Run(ctx context.Context, s *session.Session) error {
 			},
 		},
 		"agent": map[string]any{
-			// "language" CONFIGURA EL ASR — sin esto Deepgram usa "en" por
-			// defecto y el listen no entiende español (bug "el bot no me oye").
-			// Patrón equivalente al de smartsip/services/go-service/.../deepgram_agent.go.
-			"language": deepgramLang(s.Config.Language),
+			// `agent.language` está deprecado a favor de los language
+			// específicos por provider (listen + speak). La doc actual:
+			//   https://developers.deepgram.com/docs/configure-voice-agent
+			// dice literalmente: "Deprecated; use agent.listen.provider.language
+			// and agent.speak.provider.language".
 			"listen": map[string]any{
 				"provider": map[string]any{
-					"type":  "deepgram",
-					"model": listenModel,
+					"type":     "deepgram",
+					"model":    listenModel,
+					"language": deepgramLang(s.Config.Language),
+					// smart_format convierte secuencias de números pronunciados
+					// ("seis seis seis uno dos tres") en su forma escrita
+					// ("666123") — fundamental para capturar teléfonos del lead
+					// sin pos-procesado manual.
+					"smart_format": true,
 				},
 			},
 			"think": d.buildThinkSection(thinkProvider, thinkModel, openaiKey, SystemPrompt(s.Config), s.Config.Tools),
 			"speak": map[string]any{
 				"provider": map[string]any{
-					"type":  "deepgram",
-					"model": speakModel,
+					"type":     "deepgram",
+					"model":    speakModel,
+					"language": deepgramLang(s.Config.Language),
 				},
 			},
 			"greeting": greeting,
@@ -268,6 +276,10 @@ func (d *Deepgram) buildThinkSection(provider, model, externalKey, prompt string
 		"provider": map[string]any{
 			"type":  provider,
 			"model": model,
+			// reasoning_mode "low" — análogo al reasoning.effort de OpenAI:
+			// suficiente para un agente conversacional, evita latencia extra.
+			// Acepta low/medium/high según la doc oficial.
+			"reasoning_mode": "low",
 		},
 		"prompt": prompt,
 	}
